@@ -12,4 +12,3 @@ python-multipart
 google-generativeai
 email-validator
 selenium
-webdriver-manager

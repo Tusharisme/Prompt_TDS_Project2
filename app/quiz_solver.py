@@ -18,22 +18,24 @@ from app.utils.llm_client import query_llm
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 def get_driver():
     """
-    Initializes a headless Chrome driver.
+    Initializes a headless Chrome driver using system Chromium.
     """
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # Important for running in Docker/Cloud environments
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     
+    # Explicitly set binary location for Chromium
+    chrome_options.binary_location = "/usr/bin/chromium"
+    
     try:
-        service = Service(ChromeDriverManager().install())
+        # Use system chromedriver
+        service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=chrome_options)
         return driver
     except Exception as e:
