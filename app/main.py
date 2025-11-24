@@ -4,7 +4,7 @@ from typing import Dict
 
 from fastapi import FastAPI, Request, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -57,6 +57,12 @@ app.add_middleware(
 @app.get("/health", tags=["meta"])
 async def health():
     return {"ok": True, "service": settings.APP_NAME, "env": settings.APP_ENV}
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    """Serve the frontend test interface"""
+    return FileResponse("index.html")
 
 
 # -------- Error Handlers --------
