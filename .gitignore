@@ -19,3 +19,7 @@ Thumbs.db
 # Project specific
 verify_app.py
 verify_extract.py
+
+# PDF files
+*.pdf
+
