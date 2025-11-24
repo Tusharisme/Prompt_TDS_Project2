@@ -1,3 +1,12 @@
+---
+title: TDS Project2
+emoji: 📉
+colorFrom: yellow
+colorTo: yellow
+sdk: docker
+pinned: false
+---
+
 # LLM Analysis Quiz Solver - TDS Project 2
 
 An automated quiz solver built with FastAPI and Google Gemini that can fetch, parse, analyze, and solve data-related quizzes.
