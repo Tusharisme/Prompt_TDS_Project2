@@ -9,3 +9,4 @@ numpy
 requests
 python-multipart
 google-generativeai
+email-validator
