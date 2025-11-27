@@ -347,12 +347,14 @@ async def get_agent_decision(
     1. **MEMORY**: Use your Scratchpad! 
        - If you calculate an answer, WRITE IT to the scratchpad immediately using `execute_code`.
        - Example: `with open(r"{scratchpad_path}", "a") as f: f.write("Answer: 495759\\n")`
+       - This prevents you from forgetting the answer if you navigate to a new page.
     2. **VISION**: You have access to a screenshot. Use it for graphs/charts.
     3. **NO GUESSING URLS**: Do NOT guess submission URLs.
     4. **JSON/DATA**: Use Python to download/process JSON files.
     5. **SUBMISSION**: 
        - If you have the answer, use the `submit` action.
        - Payload must include: `email`, `secret`, `url`, `answer`.
+       - `email`: "{email}", `secret`: "{secret}".
     6. **REGEX SAFETY**: Use raw strings `r"..."`. No `["']` pattern.
 
     # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
