@@ -159,8 +159,17 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                         if 'resp' in locals() and 200 <= resp.status_code < 300:
                              logger.info(f"Submission likely successful despite error. Status: {resp.status_code}")
                              last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
+                             # FORCE BREAK: If we got a 2xx response, we are likely done.
+                             logger.info("Forcefully stopping agent after successful submission (fallback).")
+                             break
                         else:
                              last_observation = f"Submission failed: {type(e).__name__}: {str(e)}"
+                             
+                    # FORCE BREAK for successful JSON responses too
+                    if "Correct answer!" in last_observation or "Submission successful" in last_observation:
+                        if "Moving to next level" not in last_observation:
+                            logger.info("Forcefully stopping agent after successful submission.")
+                            break
                         
             elif action == "done":
                 logger.info("Agent decided the task is complete.")
