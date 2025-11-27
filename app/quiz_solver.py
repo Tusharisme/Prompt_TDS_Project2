@@ -128,18 +128,26 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                     try:
                         resp = await client.post(submission_url, json=payload)
                         resp.raise_for_status()
-                        result = resp.json()
-                        logger.info(f"Submission result: {result}")
                         
-                        if result.get("correct", False):
-                            next_url = result.get("url")
-                            if next_url:
-                                driver.get(next_url)
-                                last_observation = f"Correct answer! Moving to next level: {next_url}"
+                        try:
+                            result = resp.json()
+                            logger.info(f"Submission result: {result}")
+                            
+                            if isinstance(result, dict) and result.get("correct", False):
+                                next_url = result.get("url")
+                                if next_url:
+                                    driver.get(next_url)
+                                    last_observation = f"Correct answer! Moving to next level: {next_url}"
+                                else:
+                                    last_observation = "Correct answer! No next URL provided. Maybe done?"
                             else:
-                                last_observation = "Correct answer! No next URL provided. Maybe done?"
-                        else:
-                            last_observation = f"Incorrect answer. Server response: {result}"
+                                # Handle JSON response that doesn't strictly follow expected schema
+                                last_observation = f"Submission successful. Server response: {result}"
+                                
+                        except ValueError:
+                            # Response is not JSON, but status is 2xx (success)
+                            logger.info(f"Submission successful (non-JSON). Status: {resp.status_code}")
+                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response: {resp.text[:200]}"
                             
                     except Exception as e:
                         logger.error(f"Submission failed: {e}")
