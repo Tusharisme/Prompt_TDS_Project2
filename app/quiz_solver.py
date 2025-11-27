@@ -47,6 +47,11 @@ async def solve_quiz(task_url: str, email: str, secret: str):
     Agentic loop to solve the quiz.
     Uses an Observe-Decide-Act cycle powered by the LLM.
     """
+    # Explicitly cast to string to handle Pydantic types (AnyHttpUrl, EmailStr)
+    task_url = str(task_url)
+    email = str(email)
+    secret = str(secret)
+    
     driver = None
     try:
         driver = get_driver()
