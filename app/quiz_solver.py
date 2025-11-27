@@ -394,9 +394,9 @@ async def get_agent_decision(
     3. **ALWAYS READ FROM FILE**: Read `{input_file_path}`.
     4. **SUBMIT IMMEDIATELY**: If you have the answer, submit it.
     5. **REGEX SAFETY**: When writing regex in Python code, be careful with quotes. 
-       - BAD: `re.search(r"['\"]", html)` (causes SyntaxError in JSON)
-       - GOOD: `re.search(r'[\"\']', html)` or `re.search(r"[\"']", html)`
-       - BEST: Use simple patterns like `r"submission_url\s*=\s*([^\s]+)"` to avoid quote issues entirely.
+       - **NEVER USE**: `r"(["'])"` or `r"['\"]"` inside double quotes. It causes SyntaxError.
+       - **SAFE PATTERN**: `r"submission_url\s*=\s*[\"']?([^\"'\s>]+)[\"']?"`
+       - **BEST PRACTICE**: Use single quotes for the outer string if the regex contains double quotes: `re.search(r'pattern_with_"quotes"', html)`
 
     ... (rest of prompt) ...
     """
