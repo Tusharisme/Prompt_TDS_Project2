@@ -161,7 +161,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                             if isinstance(result, dict) and result.get(
                                 "correct", False
                             ):
-                                next_url = result.get("next_url") # Fix: use "next_url" key
+                                next_url = result.get("url")
                                 if next_url:
                                     driver.get(next_url)
                                     last_observation = f"Correct answer! Moving to next level: {next_url}"
