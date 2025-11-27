@@ -219,6 +219,11 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     3. "submit": Submit a JSON payload to a URL. This is the PREFERRED way to submit the final answer.
     4. "done": Stop the agent.
     
+    IMPORTANT INSTRUCTIONS FOR LARGE FILES:
+    - If the question involves analyzing a file (CSV, JSON, etc.), DO NOT assume you know its content.
+    - Use "execute_code" to download the file and inspect it first (e.g., `print(df.head())`, `print(df.info())`).
+    - Only after understanding the data structure should you write the full solution code.
+    
     CRITICAL INSTRUCTIONS - READ CAREFULLY:
     1. **NO HARDCODING LARGE DATA**: Never copy-paste large strings (like Base64 data, JSON dumps, or long text) from the HTML into your Python code. It causes SyntaxErrors and crashes.
     2. **ALWAYS READ FROM FILE**: The current page's HTML is saved to `{input_file_path}`. You MUST write Python code to read this file and extract the data programmatically (e.g., using regex or BeautifulSoup).
@@ -231,14 +236,24 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     
     # Read the HTML file
     with open(r"{input_file_path}", "r", encoding="utf-8") as f:
-        html_content = f.read()
-        
-    # Extract data using regex (example for Base64)
-    # Adjust the regex to match the actual pattern in the HTML
-    match = re.search(r'some_pattern_before(.*?)some_pattern_after', html_content, re.DOTALL)
-    if match:
-        data = match.group(1)
-        # process data...
+        html = f.read()
+    # ... extract data from html ...
+    ```
+
+    IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
+    - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
+    - Use this pattern at the top of your code:
+      ```python
+      import subprocess
+      import sys
+      def install(package):
+          subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+      
+      try:
+          import some_library
+      except ImportError:
+          install("some_library")
+          import some_library
     ```
 
     HTML Content (Cleaned):
