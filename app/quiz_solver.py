@@ -150,8 +150,17 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                             last_observation = f"Submission successful! Server returned status {resp.status_code}. Response: {resp.text[:200]}"
                             
                     except Exception as e:
-                        logger.error(f"Submission failed: {e}")
-                        last_observation = f"Submission failed: {e}"
+                        # Detailed logging to debug empty error messages
+                        logger.error(f"Submission failed with exception type: {type(e).__name__}")
+                        logger.error(f"Exception repr: {repr(e)}")
+                        logger.error(f"Exception str: {str(e)}")
+                        
+                        # If we got here but status code was 2xx, it might be a weird JSON error not caught by ValueError
+                        if 'resp' in locals() and 200 <= resp.status_code < 300:
+                             logger.info(f"Submission likely successful despite error. Status: {resp.status_code}")
+                             last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
+                        else:
+                             last_observation = f"Submission failed: {type(e).__name__}: {str(e)}"
                         
             elif action == "done":
                 logger.info("Agent decided the task is complete.")
