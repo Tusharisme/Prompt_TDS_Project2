@@ -388,6 +388,13 @@ async def get_agent_decision(
         "submission_url": "..." (if action is submit),
         "payload": {{ ... }} (if action is submit)
     }}
+    CRITICAL INSTRUCTIONS - READ CAREFULLY:
+    1. **NO GUESSING URLS**: You MUST find the submission URL in the HTML (e.g., in a script tag, form action, or comment). DO NOT guess `.../api/submit`. If you don't see it, use `execute_code` to search for it.
+    2. **NO HARDCODING LARGE DATA**: Never copy-paste large strings.
+    3. **ALWAYS READ FROM FILE**: Read `{input_file_path}`.
+    4. **SUBMIT IMMEDIATELY**: If you have the answer, submit it.
+
+    ... (rest of prompt) ...
     """
 
     response = await query_llm(prompt)
@@ -405,11 +412,20 @@ async def get_agent_decision(
         return json.loads(response)
     except json.JSONDecodeError:
         try:
-            # Fallback: Use ast.literal_eval for Python-style strings (handles single quotes, unescaped backslashes better)
+            # Fallback 1: ast.literal_eval
             import ast
             return ast.literal_eval(response)
-        except Exception as e2:
-            logger.error(f"Failed to parse LLM decision (fallback failed): {e2}. Response: {response}")
+        except:
+            try:
+                # Fallback 2: Regex extraction of JSON object
+                import re
+                json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                if json_match:
+                    return json.loads(json_match.group(0))
+            except:
+                pass
+            
+            logger.error(f"Failed to parse LLM decision. Response: {response}")
             return {"thought": "Failed to parse JSON", "action": "done"}
     except Exception as e:
         logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
