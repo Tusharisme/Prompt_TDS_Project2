@@ -245,8 +245,17 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     # Read the HTML file
     with open(r"{input_file_path}", "r", encoding="utf-8") as f:
         html = f.read()
-    # ... extract data from html ...
+        
+    # ROBUST REGEX PATTERNS (Try these):
+    # 1. For Base64 in comments: r"Data Dump:\s*([A-Za-z0-9+/=]+)"
+    # 2. For Base64 across lines: r"Data Dump:\s*([A-Za-z0-9+/=\s]+)" (then remove newlines)
+    # 3. Use re.DOTALL if content spans lines: re.search(r"pattern", html, re.DOTALL)
     ```
+
+    STOP LOOPING INSTRUCTIONS:
+    - If you have already calculated the answer in a previous step, DO NOT calculate it again.
+    - IMMEDIATELY use the "submit" action with the calculated answer.
+    - If submission fails with a non-JSON response (e.g. 200 OK text), it is likely a SUCCESS. Do not retry endlessly.
 
     IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
     - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
