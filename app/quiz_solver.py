@@ -164,9 +164,9 @@ def clean_html(html: str) -> str:
     for tag in soup(["style", "svg", "path", "link", "meta", "noscript", "iframe", "footer", "header"]):
         tag.decompose()
         
-    # Remove comments
-    for element in soup(text=lambda text: isinstance(text, Comment)):
-        element.extract()
+    # Comments are PRESERVED as they often contain hidden clues for the agent
+    # for element in soup(text=lambda text: isinstance(text, Comment)):
+    #     element.extract()
         
     # Clean attributes
     for tag in soup.find_all(True):
