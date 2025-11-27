@@ -347,15 +347,32 @@ async def get_agent_decision(
     1. **MEMORY**: Use your Scratchpad! 
        - If you calculate an answer, WRITE IT to the scratchpad immediately using `execute_code`.
        - Example: `with open(r"{scratchpad_path}", "a") as f: f.write("Answer: 495759\\n")`
-       - This prevents you from forgetting the answer if you navigate to a new page.
     2. **VISION**: You have access to a screenshot. Use it for graphs/charts.
     3. **NO GUESSING URLS**: Do NOT guess submission URLs.
     4. **JSON/DATA**: Use Python to download/process JSON files.
     5. **SUBMISSION**: 
        - If you have the answer, use the `submit` action.
        - Payload must include: `email`, `secret`, `url`, `answer`.
-       - `email`: "{email}", `secret`: "{secret}".
     6. **REGEX SAFETY**: Use raw strings `r"..."`. No `["']` pattern.
+
+    # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
+    - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
+    - **INSPECT FIRST**: Use `execute_code` to PRINT the content around the keyword.
+      ```python
+      # Example: Find where "Data Dump" is and print context
+      with open(r"{input_file_path}", "r") as f: html = f.read()
+      idx = html.find("Data Dump")
+      if idx != -1:
+          print(f"CONTEXT: {{html[idx:idx+500]}}")
+      else:
+          print("Keyword 'Data Dump' not found.")
+      ```
+    - **SELF-CORRECT**: Use the printed context to write the correct regex in the next step.
+
+    # VERIFICATION CHECKLIST
+    - Did I filter the data correctly? (e.g., "Electronics" only?)
+    - Did I perform the correct math? (e.g., sum of price * stock?)
+    - Did I format the answer correctly? (e.g., integer vs string?)
     
     # TOOLS
     1. `navigate(url)`: Go to a URL.
