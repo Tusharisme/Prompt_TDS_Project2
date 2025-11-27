@@ -161,12 +161,13 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                             if isinstance(result, dict) and result.get(
                                 "correct", False
                             ):
-                                next_url = result.get("url")
+                                next_url = result.get("next_url") # Fix: use "next_url" key
                                 if next_url:
                                     driver.get(next_url)
                                     last_observation = f"Correct answer! Moving to next level: {next_url}"
-                                    # Mark that we succeeded on this level; allow loop to continue for next one
-                                    has_submitted_successfully = True
+                                    # We have a next level, so we are NOT done. 
+                                    # Reset has_submitted_successfully so the loop continues for the new level.
+                                    has_submitted_successfully = False 
                                 else:
                                     last_observation = "Correct answer! No next URL provided. Maybe done?"
                                     has_submitted_successfully = True
