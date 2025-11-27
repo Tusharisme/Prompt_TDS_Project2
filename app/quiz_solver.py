@@ -411,21 +411,13 @@ async def get_agent_decision(
 
         return json.loads(response)
     except json.JSONDecodeError:
+        # Use json_repair library to fix malformed JSON
         try:
-            # Fallback 1: ast.literal_eval
-            import ast
-            return ast.literal_eval(response)
-        except:
-            try:
-                # Fallback 2: Regex extraction of JSON object
-                import re
-                json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                if json_match:
-                    return json.loads(json_match.group(0))
-            except:
-                pass
-            
-            logger.error(f"Failed to parse LLM decision. Response: {response}")
+            from json_repair import repair_json
+            repaired = repair_json(response)
+            return json.loads(repaired)
+        except Exception as e:
+            logger.error(f"Failed to repair and parse LLM decision: {e}. Response: {response}")
             return {"thought": "Failed to parse JSON", "action": "done"}
     except Exception as e:
         logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
