@@ -117,9 +117,13 @@ async def solve_quiz(task_url: str, email: str, secret: str):
             if action == "navigate":
                 url = decision.get("url")
                 if url:
-                    logger.info(f"Navigating to {url}")
-                    driver.get(url)
-                    last_observation = f"Navigated to {url}"
+                    # Resolve relative URLs
+                    from urllib.parse import urljoin
+                    full_url = urljoin(driver.current_url, url)
+                    
+                    logger.info(f"Navigating to {full_url}")
+                    driver.get(full_url)
+                    last_observation = f"Navigated to {full_url}"
                 else:
                     last_observation = "Error: 'navigate' action missing 'url'."
 
