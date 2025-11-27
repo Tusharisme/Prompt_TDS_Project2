@@ -12,3 +12,11 @@ python-multipart
 google-generativeai
 email-validator
 selenium
+matplotlib
+seaborn
+scikit-learn
+scipy
+networkx
+pillow
+pypdf
+faker

@@ -212,6 +212,22 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     - If the question involves analyzing a file (CSV, JSON, etc.), DO NOT assume you know its content.
     - Use "execute_code" to download the file and inspect it first (e.g., `print(df.head())`, `print(df.info())`).
     - Only after understanding the data structure should you write the full solution code.
+
+    IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
+    - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
+    - Use this pattern at the top of your code:
+      ```python
+      import subprocess
+      import sys
+      def install(package):
+          subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+      
+      try:
+          import some_library
+      except ImportError:
+          install("some_library")
+          import some_library
+      ```
     
     HTML Content (Cleaned):
     ```html
