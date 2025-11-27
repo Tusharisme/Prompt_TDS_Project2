@@ -253,7 +253,8 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     CRITICAL INSTRUCTIONS - READ CAREFULLY:
     1. **NO HARDCODING LARGE DATA**: Never copy-paste large strings (like Base64 data, JSON dumps, or long text) from the HTML into your Python code. It causes SyntaxErrors and crashes.
     2. **ALWAYS READ FROM FILE**: The current page's HTML is saved to `{input_file_path}`. You MUST write Python code to read this file and extract the data programmatically (e.g., using regex or BeautifulSoup).
-    3. **SUBMIT THE ANSWER**: Once you have calculated the answer, DO NOT just print it. You MUST use the "submit" action to send it to the correct URL.
+    3. **SUBMIT IMMEDIATELY**: Check the "Last Observation/Result" above. If it contains the calculated answer (e.g., a number like 495759), DO NOT calculate it again. Use the "submit" action IMMEDIATELY.
+    4. **DO NOT PRINT AGAIN**: If you have the answer, do not use "execute_code" to print it. Use "submit".
     
     Example of reading the file correctly:
     ```python
