@@ -378,54 +378,99 @@ async def get_agent_decision(
     - If you need to calculate something or download a file, use "execute_code".
     - If you have the answer, look for a submission form or endpoint in the HTML and use "submit".
     - The submission payload usually requires "email", "secret", "url" (current task url), and "answer".
-    - Return ONLY a valid JSON object with the following schema:
     
+    **OUTPUT FORMAT (XML-STYLE)**:
+    You must return your decision in the following format. Do not use JSON.
+    
+    <thought>
+    Explain your reasoning here.
+    </thought>
+    
+    <action>
+    navigate | execute_code | submit | done
+    </action>
+    
+    <url>
+    (Only if action is navigate) The URL to go to.
+    </url>
+    
+    <code>
+    (Only if action is execute_code)
+    import os
+    ... your python code ...
+    </code>
+    
+    <submission_url>
+    (Only if action is submit) The URL to submit to.
+    </submission_url>
+    
+    <payload>
+    (Only if action is submit)
     {{
-        "thought": "Your reasoning here...",
-        "action": "navigate" | "execute_code" | "submit" | "done",
-        "url": "..." (if action is navigate),
-        "code": "..." (if action is execute_code),
-        "submission_url": "..." (if action is submit),
-        "payload": {{ ... }} (if action is submit)
+        "email": "{email}",
+        "secret": "{secret}",
+        "url": "{url}",
+        "answer": ...
     }}
+    </payload>
+
     CRITICAL INSTRUCTIONS - READ CAREFULLY:
-    1. **NO GUESSING URLS**: You MUST find the submission URL in the HTML (e.g., in a script tag, form action, or comment). DO NOT guess `.../api/submit`. If you don't see it, use `execute_code` to search for it.
+    1. **NO GUESSING URLS**: You MUST find the submission URL in the HTML.
     2. **NO HARDCODING LARGE DATA**: Never copy-paste large strings.
     3. **ALWAYS READ FROM FILE**: Read `{input_file_path}`.
     4. **SUBMIT IMMEDIATELY**: If you have the answer, submit it.
-    5. **REGEX SAFETY**: When writing regex in Python code, be careful with quotes. 
-       - **NEVER USE**: `r"(["'])"` or `r"['\"]"` inside double quotes. It causes SyntaxError.
-       - **SAFE PATTERN**: `r"submission_url\s*=\s*[\"']?([^\"'\s>]+)[\"']?"`
-       - **BEST PRACTICE**: Use single quotes for the outer string if the regex contains double quotes: `re.search(r'pattern_with_"quotes"', html)`
-
-    ... (rest of prompt) ...
+    5. **REGEX SAFETY**: You can now use any regex pattern safely inside the <code> block.
     """
 
     response = await query_llm(prompt)
-
-    # Clean up response to ensure JSON
-    try:
-        # Strip markdown code blocks if present
-        if "```json" in response:
-            response = response.split("```json")[1].split("```")[0]
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0]
+    
+    # Parse XML-style response using Regex
+    import re
+    
+    decision = {}
+    
+    # Extract thought
+    thought_match = re.search(r'<thought>(.*?)</thought>', response, re.DOTALL)
+    if thought_match:
+        decision["thought"] = thought_match.group(1).strip()
+    else:
+        decision["thought"] = "No thought provided."
+        
+    # Extract action
+    action_match = re.search(r'<action>(.*?)</action>', response, re.DOTALL)
+    if action_match:
+        decision["action"] = action_match.group(1).strip()
+    else:
+        logger.error(f"Failed to parse action from response: {response}")
+        return {"thought": "Failed to parse action", "action": "done"}
+        
+    # Extract optional fields based on action
+    if decision["action"] == "navigate":
+        url_match = re.search(r'<url>(.*?)</url>', response, re.DOTALL)
+        if url_match:
+            decision["url"] = url_match.group(1).strip()
             
-        response = response.strip()
-
-        return json.loads(response)
-    except json.JSONDecodeError:
-        # Use json_repair library to fix malformed JSON
-        try:
-            from json_repair import repair_json
-            repaired = repair_json(response)
-            return json.loads(repaired)
-        except Exception as e:
-            logger.error(f"Failed to repair and parse LLM decision: {e}. Response: {response}")
-            return {"thought": "Failed to parse JSON", "action": "done"}
-    except Exception as e:
-        logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
-        return {"thought": "Failed to parse JSON", "action": "done"}
+    elif decision["action"] == "execute_code":
+        code_match = re.search(r'<code>(.*?)</code>', response, re.DOTALL)
+        if code_match:
+            decision["code"] = code_match.group(1).strip()
+            
+    elif decision["action"] == "submit":
+        sub_url_match = re.search(r'<submission_url>(.*?)</submission_url>', response, re.DOTALL)
+        if sub_url_match:
+            decision["submission_url"] = sub_url_match.group(1).strip()
+            
+        payload_match = re.search(r'<payload>(.*?)</payload>', response, re.DOTALL)
+        if payload_match:
+            try:
+                # Payload is still JSON, but it's usually simple key-value pairs
+                # We can use json_repair here just in case
+                from json_repair import repair_json
+                decision["payload"] = json.loads(repair_json(payload_match.group(1).strip()))
+            except Exception as e:
+                logger.error(f"Failed to parse payload JSON: {e}")
+                
+    return decision
 
 
 def execute_code(code: str):
