@@ -38,6 +38,190 @@ def get_driver():
         # Use system chromedriver
         service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=chrome_options)
+        return driver
+    except Exception as e:
+        logger.error(f"Failed to initialize Selenium driver: {e}")
+        raise
+
+
+async def solve_quiz(task_url: str, email: str, secret: str):
+    """
+    Agentic loop to solve the quiz.
+    Uses an Observe-Decide-Act cycle powered by the LLM.
+    """
+    # Explicitly cast to string to handle Pydantic types (AnyHttpUrl, EmailStr)
+    task_url = str(task_url)
+    email = str(email)
+    secret = str(secret)
+
+    # Initialize scratchpad temp file
+    scratchpad_path = os.path.join(tempfile.gettempdir(), f"scratchpad_{os.getpid()}.txt")
+    # Ensure it starts empty
+    with open(scratchpad_path, "w", encoding="utf-8") as f:
+        f.write("")
+
+    driver = None
+    try:
+        driver = get_driver()
+        current_url = task_url
+        driver.get(current_url)
+
+        last_observation = "Started quiz."
+
+        # Track if we've already successfully submitted an answer
+        has_submitted_successfully = False
+
+        # Limit steps to prevent infinite loops
+        for step in range(25):
+            logger.info(f"--- Step {step} ---")
+            logger.info(f"Current URL: {driver.current_url}")
+
+            # Read scratchpad content
+            try:
+                with open(scratchpad_path, "r", encoding="utf-8") as f:
+                    scratchpad_content = f.read()
+            except Exception as e:
+                scratchpad_content = f"Error reading scratchpad: {e}"
+
+            # 1. Observe
+            try:
+                # Wait briefly for dynamic content
+                await asyncio.sleep(1) 
+                html_content = driver.page_source
+                
+                # Capture screenshot for Vision capabilities
+                screenshot_b64 = driver.get_screenshot_as_base64()
+                from PIL import Image
+                from io import BytesIO
+                import base64
+                screenshot_image = Image.open(BytesIO(base64.b64decode(screenshot_b64)))
+                
+                # Use temp directory to avoid permission issues
+                input_file_path = os.path.join(tempfile.gettempdir(), "input_page.html")
+                with open(input_file_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+
+            except Exception as e:
+                logger.error(f"Failed to read page or capture screenshot: {e}")
+                last_observation = f"Error observing page: {e}"
+                continue
+
+            # 2. Decide
+            # If we've already submitted successfully, short‑circuit and tell the agent we're done
+            if has_submitted_successfully:
+                logger.info(
+                    "Previous step already submitted successfully; stopping loop."
+                )
+                break
+
+            decision = await get_agent_decision(
+                html_content,
+                driver.current_url,
+                last_observation,
+                email,
+                secret,
+                input_file_path,
+                scratchpad_content, # Pass scratchpad content
+                scratchpad_path,    # Pass scratchpad path so agent can write to it
+                screenshot_image,
+            )
+            logger.info(f"Agent Decision: {decision}")
+
+            if not decision:
+                logger.error("Agent returned no decision.")
+                break
+
+            action = decision.get("action")
+            reasoning = decision.get("thought")
+            logger.info(f"Reasoning: {reasoning}")
+
+            # 3. Act
+            if action == "navigate":
+                url = decision.get("url")
+                if url:
+                    # Resolve relative URLs
+                    from urllib.parse import urljoin
+                    full_url = urljoin(driver.current_url, url)
+                    
+                    logger.info(f"Navigating to {full_url}")
+                    driver.get(full_url)
+                    last_observation = f"Navigated to {full_url}"
+                else:
+                    last_observation = "Error: 'navigate' action missing 'url'."
+
+            elif action == "execute_code":
+                code = decision.get("code")
+                if code:
+                    logger.info("Executing code...")
+                    output = execute_code(code)
+                    logger.info(f"Code Output: {output}")
+                    last_observation = f"Code Execution Result:\n{output}"
+                else:
+                    last_observation = "Error: 'execute_code' action missing 'code'."
+
+            elif action == "submit":
+                submission_url = decision.get("submission_url")
+                payload = decision.get("payload", {})
+
+                # Ensure email/secret are present if not provided by LLM (though LLM should provide them)
+                if "email" not in payload:
+                    payload["email"] = email
+                if "secret" not in payload:
+                    payload["secret"] = secret
+
+                logger.info(f"Submitting to {submission_url} with payload: {payload}")
+
+                async with httpx.AsyncClient() as client:
+                    try:
+                        resp = await client.post(submission_url, json=payload)
+                        resp.raise_for_status()
+
+                        try:
+                            result = resp.json()
+                            logger.info(f"Submission result: {result}")
+
+                            if isinstance(result, dict) and result.get(
+                                "correct", False
+                            ):
+                                next_url = result.get("url")
+                                if next_url:
+                                    driver.get(next_url)
+                                    last_observation = f"Correct answer! Moving to next level: {next_url}"
+                                    # We have a next level, so we are NOT done. 
+                                    # Reset has_submitted_successfully so the loop continues for the new level.
+                                    has_submitted_successfully = False 
+                                else:
+                                    last_observation = "Correct answer! No next URL provided. Maybe done?"
+                                    has_submitted_successfully = True
+                            else:
+                                # Handle JSON response that doesn't strictly follow expected schema
+                                last_observation = (
+                                    f"Submission successful. Server response: {result}"
+                                )
+                                has_submitted_successfully = True
+
+                        except ValueError:
+                            # Response is not JSON, but status is 2xx (success)
+                            logger.info(
+                                f"Submission successful (non-JSON). Status: {resp.status_code}"
+                            )
+                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response: {resp.text[:200]}"
+                            has_submitted_successfully = True
+
+                    except Exception as e:
+                        # Detailed logging to debug empty error messages
+                        logger.error(
+                            f"Submission failed with exception type: {type(e).__name__}"
+                        )
+                        logger.error(f"Exception repr: {repr(e)}")
+                        logger.error(f"Exception str: {str(e)}")
+
+                        # If we got here but status code was 2xx, it might be a weird JSON error not caught by ValueError
+                        if "resp" in locals() and 200 <= resp.status_code < 300:
+                            logger.info(
+                                f"Submission likely successful despite error. Status: {resp.status_code}"
+                            )
+                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
                             has_submitted_successfully = True
                         else:
                             last_observation = (
@@ -123,100 +307,152 @@ def clean_html(html: str) -> str:
 
 
 async def get_agent_decision(
-    html: str,
-    url: str,
+    html_content: str,
+    current_url: str,
     last_observation: str,
     email: str,
     secret: str,
     input_file_path: str,
+    scratchpad_content: str, # New arg
+    scratchpad_path: str,    # New arg
+    screenshot_image=None,
 ) -> dict:
     """
-    Asks the LLM what to do next based on the current page and history.
+    Asks the LLM for the next step based on the current state and visual context.
     """
     # Clean HTML to save tokens
-    cleaned_html = clean_html(html)
+    cleaned_html = clean_html(html_content)
 
     # Truncate if still too long (safety net)
     if len(cleaned_html) > 50000:
         cleaned_html = cleaned_html[:50000] + "...(truncated)"
+    
+    system_prompt = f"""
+    You are an autonomous AI agent solving a quiz/CTF challenge.
+    
+    # OBJECTIVE
+    Navigate the website, find the answer to the question, and submit it.
+    
+    # INPUTS
+    - Current URL: {current_url}
+    - Last Observation: {last_observation}
+    - Scratchpad (Memory):
+    ```text
+    {scratchpad_content}
+    ```
+    - HTML Content: (Provided below)
+    - Visual Context: (Screenshot provided)
+    
+    # CRITICAL INSTRUCTIONS
+    1. **MEMORY**: Use your Scratchpad! 
+       - If you calculate an answer, WRITE IT to the scratchpad immediately using `execute_code`.
+       - Example: `with open(r"{scratchpad_path}", "a") as f: f.write("Answer: 495759\\n")`
+       - This prevents you from forgetting the answer if you navigate to a new page.
+    2. **VISION**: You have access to a screenshot. Use it for graphs/charts.
+    3. **NO GUESSING URLS**: Do NOT guess submission URLs.
+    4. **JSON/DATA**: Use Python to download/process JSON files.
+    5. **SUBMISSION**: 
+       - If you have the answer, use the `submit` action.
+       - Payload must include: `email`, `secret`, `url`, `answer`.
+       - `email`: "{email}", `secret`: "{secret}".
+    6. **REGEX SAFETY**: Use raw strings `r"..."`. No `["']` pattern.
+    
+    # TOOLS
+    1. `navigate(url)`: Go to a URL.
+    2. `execute_code(code)`: Run Python code. 
+       - HTML file: `{input_file_path}`
+       - Scratchpad file: `{scratchpad_path}` (Read/Write allowed)
+    3. `submit(submission_url, payload)`: Submit the answer.
+    
+    # OUTPUT FORMAT
+    You MUST respond in this EXACT XML-style format:
+    
+    <thought>
+    Your reasoning here. Explain what you see in the screenshot and HTML.
+    </thought>
+    <action>navigate OR execute_code OR submit</action>
+    <url>URL to navigate to (only for navigate)</url>
+    <code>
+    Python code to execute (only for execute_code)
+    </code>
+    <submission_url>URL to submit to (only for submit)</submission_url>
+    <payload>
+    JSON payload for submission (only for submit)
+    </payload>
+    """
+    
+    user_message = f"Current URL: {current_url}\nLast Observation: {last_observation}\nScratchpad:\n{scratchpad_content}\n\nHTML Snippet (first 2000 chars):\n{cleaned_html[:2000]}..."
 
-    prompt = f"""
-    You are an autonomous agent solving a technical quiz.
-    
-    Context:
-    - Current URL: {url}
-    - User Email: {email}
-    - User Secret: {secret}
-    - Last Observation/Result: {last_observation}
-    
-    Task:
-    Analyze the HTML content below and decide the next step.
-    The goal is to find the question, solve it (potentially using Python code), and submit the answer.
-    
-    Capabilities:
-    1. "navigate": Go to a specific URL.
-    2. "execute_code": Run Python code. The code has access to the internet and environment variables. Use this to download files, process data, or even submit answers if complex requests are needed.
-    3. "submit": Submit a JSON payload to a URL. This is the PREFERRED way to submit the final answer.
-    4. "done": Stop the agent.
-    
-    IMPORTANT INSTRUCTIONS FOR LARGE FILES:
-    - If the question involves analyzing a file (CSV, JSON, etc.), DO NOT assume you know its content.
-    - Use "execute_code" to download the file and inspect it first (e.g., `print(df.head())`, `print(df.info())`).
-    - Only after understanding the data structure should you write the full solution code.
-    
-    CRITICAL INSTRUCTIONS - READ CAREFULLY:
-    1. **NO HARDCODING LARGE DATA**: Never copy-paste large strings (like Base64 data, JSON dumps, or long text) from the HTML into your Python code. It causes SyntaxErrors and crashes.
-    2. **ALWAYS READ FROM FILE**: The current page's HTML is saved to `{input_file_path}`. You MUST write Python code to read this file and extract the data programmatically (e.g., using regex or BeautifulSoup).
-    3. **SUBMIT IMMEDIATELY**: Check the "Last Observation/Result" above. If it contains the calculated answer (e.g., a number like 495759), DO NOT calculate it again. Use the "submit" action IMMEDIATELY.
-    4. **DO NOT PRINT AGAIN**: If you have the answer, do not use "execute_code" to print it. Use "submit".
-    
-    Example of reading the file correctly:
-    ```python
-    import re
-    import os
-    
-    # Read the HTML file
-    with open(r"{input_file_path}", "r", encoding="utf-8") as f:
-        html = f.read()
+    try:
+        # Prepare the content list for Gemini (Multimodal)
+        # Note: We need to import model from somewhere or pass it in. 
+        # Assuming query_llm handles text only, we need to use the genai model directly.
+        # However, to keep it simple and compatible with existing structure, let's assume query_llm can handle this 
+        # OR we need to instantiate the model here.
+        # For now, let's use the existing query_llm which might not support images yet.
+        # If we need images, we must use google.generativeai directly.
         
-    # ROBUST REGEX PATTERNS (Try these):
-    # 1. For Base64 in comments: r"Data Dump:\s*([A-Za-z0-9+/=]+)"
-    # 2. For Base64 across lines: r"Data Dump:\s*([A-Za-z0-9+/=\s]+)" (then remove newlines)
-    # 3. Use re.DOTALL if content spans lines: re.search(r"pattern", html, re.DOTALL)
-    ```
+        # Checking imports... we don't have google.generativeai imported.
+        # Let's use query_llm for text and add image support if possible, or just skip image if query_llm doesn't support it.
+        # BUT, the user explicitly asked for Vision.
+        
+        # Let's try to use the `model` object if it's available globally or import it.
+        # Since I cannot see where `model` is defined, I will use `query_llm` for now and append the image description if needed.
+        # Wait, the previous code I wrote used `await model.generate_content_async`. 
+        # This implies `model` was expected to be there. But it's not in the imports!
+        # I need to fix this. I will import google.generativeai.
+        
+        import google.generativeai as genai
+        # We need the API key. It should be in settings.
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-2.0-flash-exp') # Or whatever model is available
+        
+        contents = [system_prompt, user_message]
+        if screenshot_image:
+            contents.append(screenshot_image)
 
-    STOP LOOPING INSTRUCTIONS:
-    - If you have already calculated the answer in a previous step, DO NOT calculate it again.
-    - If you already know the answer or see it mentioned in the page or in "Last Observation/Result", you MUST choose "submit" as your next and final action.
-    - When you know the answer, you MUST NOT choose "execute_code" or "navigate" again.
-    - If submission fails with a non-JSON response (e.g. 200 OK text), it is likely a SUCCESS. Do not retry endlessly.
+        response = await model.generate_content_async(contents)
+        response_text = response.text
+        
+        # Parse XML-style output
+        import re
+        
+        thought_match = re.search(r"<thought>(.*?)</thought>", response_text, re.DOTALL)
+        action_match = re.search(r"<action>(.*?)</action>", response_text, re.DOTALL)
+        
+        decision = {}
+        if thought_match:
+            decision["thought"] = thought_match.group(1).strip()
+        if action_match:
+            decision["action"] = action_match.group(1).strip()
+            
+        if decision.get("action") == "navigate":
+            url_match = re.search(r"<url>(.*?)</url>", response_text, re.DOTALL)
+            if url_match:
+                decision["url"] = url_match.group(1).strip()
+                
+        elif decision.get("action") == "execute_code":
+            code_match = re.search(r"<code>(.*?)</code>", response_text, re.DOTALL)
+            if code_match:
+                decision["code"] = code_match.group(1).strip()
+                
+        elif decision.get("action") == "submit":
+            sub_url_match = re.search(r"<submission_url>(.*?)</submission_url>", response_text, re.DOTALL)
+            payload_match = re.search(r"<payload>(.*?)</payload>", response_text, re.DOTALL)
+            
+            if sub_url_match:
+                decision["submission_url"] = sub_url_match.group(1).strip()
+            if payload_match:
+                payload_str = payload_match.group(1).strip()
+                # Use json_repair for the payload part
+                import json_repair
+                decision["payload"] = json_repair.loads(payload_str)
 
-    DECISION PRIORITY (ALWAYS FOLLOW THIS ORDER):
-    1) If you have the final answer -> use "submit".
-    2) If you do NOT yet have the answer but see data to download/process -> use "execute_code".
-    3) If you are clearly on a page that only tells you to go somewhere else -> use "navigate".
-    4) Use "done" ONLY when the entire quiz is finished and there is nothing left to submit or navigate to.
+        return decision
 
-    IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
-    - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
-    - Use this pattern at the top of your code:
-      ```python
-      import subprocess
-      import sys
-      def install(package):
-          subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-      
-      try:
-          import some_library
-      except ImportError:
-          install("some_library")
-          import some_library
-    ```
-
-    HTML Content (Cleaned):
-    ```html
-    {cleaned_html}
-    ```
+    except Exception as e:
+        logger.error(f"LLM Error: {e}")
+        return None
 
 
 def execute_code(code: str):
