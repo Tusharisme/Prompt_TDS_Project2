@@ -9,7 +9,7 @@ import sys
 import os
 import subprocess
 import tempfile
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from loguru import logger
 from app.config import settings
 from app.utils.llm_client import query_llm
@@ -44,153 +44,217 @@ def get_driver():
 
 async def solve_quiz(task_url: str, email: str, secret: str):
     """
-    Main loop to solve the quiz.
-    Fetches the quiz using Selenium (for dynamic content), solves it, 
-    submits the answer, and handles the next URL.
+    Agentic loop to solve the quiz.
+    Uses an Observe-Decide-Act cycle powered by the LLM.
     """
-    current_url = task_url
     driver = None
-    
     try:
-        # Initialize driver once
         driver = get_driver()
+        current_url = task_url
+        driver.get(current_url)
         
-        while current_url:
-            logger.info(f"Solving quiz at: {current_url}")
+        last_observation = "Started quiz."
+        
+        # Limit steps to prevent infinite loops
+        for step in range(25):
+            logger.info(f"--- Step {step} ---")
+            logger.info(f"Current URL: {driver.current_url}")
             
-            # 1. Fetch the quiz page using Selenium
+            # 1. Observe
             try:
-                driver.get(current_url)
-                # Wait a bit for dynamic content if needed? 
-                # For now, implicit wait or just proceeding is usually enough for simple JS.
-                # driver.implicitly_wait(2) 
+                # Wait briefly for dynamic content
+                await asyncio.sleep(1) 
                 html_content = driver.page_source
+                # Clean up HTML slightly to reduce token count if needed, but raw is usually best for "hidden" clues
             except Exception as e:
-                logger.error(f"Failed to fetch quiz with Selenium: {e}")
-                break
+                logger.error(f"Failed to read page: {e}")
+                last_observation = f"Error reading page: {e}"
+                continue
 
-            # 2. Extract the question
-            question = extract_question(html_content)
-            print(f"DEBUG: Extracted question: {question}")
-            if not question:
-                logger.error("Could not extract question from page.")
+            # 2. Decide
+            decision = await get_agent_decision(html_content, driver.current_url, last_observation, email, secret)
+            logger.info(f"Agent Decision: {decision}")
+            
+            if not decision:
+                logger.error("Agent returned no decision.")
                 break
                 
-            logger.info(f"Question: {question}")
-
-            # 3. Solve the question
-            answer = await get_answer(question)
-            logger.info(f"Computed Answer: {answer}")
-
-            # 4. Submit the answer
-            # We still use httpx for submission as it's an API call, not a page navigation
-            submission_url = "https://tds-llm-analysis.s-anand.net/submit" 
+            action = decision.get("action")
+            reasoning = decision.get("thought")
+            logger.info(f"Reasoning: {reasoning}")
             
-            # Try to extract submission URL from text if present
-            submit_url_match = re.search(r'Post your answer to (https://[^\s]+)', html_content)
-            if submit_url_match:
-                submission_url = submit_url_match.group(1)
-            
-            payload = {
-                "email": email,
-                "secret": secret,
-                "url": current_url,
-                "answer": answer
-            }
-            
-            print(f"DEBUG: Submitting to {submission_url} with payload: {payload}")
-            logger.info(f"Submitting to {submission_url} with payload: {payload}")
-
-            async with httpx.AsyncClient() as client:
-                try:
-                    resp = await client.post(submission_url, json=payload)
-                    resp.raise_for_status()
-                    result = resp.json()
-                    print(f"DEBUG: Submission result: {result}")
-                    logger.info(f"Submission result: {result}")
+            # 3. Act
+            if action == "navigate":
+                url = decision.get("url")
+                if url:
+                    logger.info(f"Navigating to {url}")
+                    driver.get(url)
+                    last_observation = f"Navigated to {url}"
+                else:
+                    last_observation = "Error: 'navigate' action missing 'url'."
                     
-                    if result.get("correct", False):
-                        current_url = result.get("url") # Next URL
-                        print(f"DEBUG: Next URL: {current_url}")
-                    else:
-                        logger.warning(f"Incorrect answer: {result.get('reason')}")
-                        current_url = result.get("url") 
-                        print(f"DEBUG: Incorrect answer. Next URL: {current_url}")
+            elif action == "execute_code":
+                code = decision.get("code")
+                if code:
+                    logger.info("Executing code...")
+                    output = execute_code(code)
+                    logger.info(f"Code Output: {output}")
+                    last_observation = f"Code Execution Result:\n{output}"
+                else:
+                    last_observation = "Error: 'execute_code' action missing 'code'."
+                    
+            elif action == "submit":
+                submission_url = decision.get("submission_url")
+                payload = decision.get("payload", {})
+                
+                # Ensure email/secret are present if not provided by LLM (though LLM should provide them)
+                if "email" not in payload: payload["email"] = email
+                if "secret" not in payload: payload["secret"] = secret
+                
+                logger.info(f"Submitting to {submission_url} with payload: {payload}")
+                
+                async with httpx.AsyncClient() as client:
+                    try:
+                        resp = await client.post(submission_url, json=payload)
+                        resp.raise_for_status()
+                        result = resp.json()
+                        logger.info(f"Submission result: {result}")
                         
-                except Exception as e:
-                    print(f"DEBUG: Submission failed: {e}")
-                    logger.error(f"Submission failed: {e}")
-                    break
-                    
+                        if result.get("correct", False):
+                            next_url = result.get("url")
+                            if next_url:
+                                driver.get(next_url)
+                                last_observation = f"Correct answer! Moving to next level: {next_url}"
+                            else:
+                                last_observation = "Correct answer! No next URL provided. Maybe done?"
+                        else:
+                            last_observation = f"Incorrect answer. Server response: {result}"
+                            
+                    except Exception as e:
+                        logger.error(f"Submission failed: {e}")
+                        last_observation = f"Submission failed: {e}"
+                        
+            elif action == "done":
+                logger.info("Agent decided the task is complete.")
+                break
+                
+            else:
+                logger.warning(f"Unknown action: {action}")
+                last_observation = f"Error: Unknown action '{action}'"
+
     except Exception as e:
         logger.error(f"Fatal error in solver loop: {e}")
     finally:
         if driver:
             driver.quit()
 
-def extract_question(html: str) -> str:
+def clean_html(html: str) -> str:
     """
-    Extracts the question text from the HTML.
-    Handles `atob` pattern and falls back to visible text.
+    Cleans HTML to reduce token count while preserving relevant content.
+    Removes styles, SVGs, and unnecessary attributes.
     """
     soup = BeautifulSoup(html, "html.parser")
     
-    # 1. Look for script tag with atob (common in this challenge)
-    scripts = soup.find_all("script")
-    for script in scripts:
-        if script.string and "atob" in script.string:
-            match = re.search(r'atob\([`\'"]([^`\'"]+)[`\'"]\)', script.string)
-            if match:
-                b64_str = match.group(1)
-                # Fix padding
-                b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
-                try:
-                    decoded = base64.b64decode(b64_str).decode("utf-8")
-                    return decoded
-                except Exception as e:
-                    logger.error(f"Base64 decode failed: {e}")
-    
-    # 2. Look for specific container (often <div id="question"> or similar?)
-    # For now, fallback to all text, but maybe clean it up
-    text = soup.get_text(separator=" ", strip=True)
-    return text
+    # Remove irrelevant tags
+    for tag in soup(["style", "svg", "path", "link", "meta", "noscript", "iframe", "footer", "header"]):
+        tag.decompose()
+        
+    # Remove comments
+    for element in soup(text=lambda text: isinstance(text, Comment)):
+        element.extract()
+        
+    # Clean attributes
+    for tag in soup.find_all(True):
+        # Keep only essential attributes
+        allowed_attrs = ['id', 'name', 'class', 'href', 'src', 'action', 'method', 'type', 'value', 'placeholder']
+        attrs = dict(tag.attrs)
+        for attr in attrs:
+            if attr not in allowed_attrs:
+                del tag.attrs[attr]
+                
+        # Truncate long class names or src (optional, but good for safety)
+        if 'src' in tag.attrs and len(tag['src']) > 500:
+            tag['src'] = tag['src'][:500] + "..."
+            
+    return str(soup)
 
-async def get_answer(question: str):
+async def get_agent_decision(html: str, url: str, last_observation: str, email: str, secret: str) -> dict:
     """
-    Decides how to solve the question (LLM direct vs Code) and returns the answer.
+    Asks the LLM what to do next based on the current page and history.
     """
+    # Clean HTML to save tokens
+    cleaned_html = clean_html(html)
+    
+    # Truncate if still too long (safety net)
+    if len(cleaned_html) > 50000:
+        cleaned_html = cleaned_html[:50000] + "...(truncated)"
+
     prompt = f"""
-    You are an intelligent assistant solving a data analysis quiz.
-    Question: {question}
+    You are an autonomous agent solving a technical quiz.
     
-    If the question requires downloading a file and analyzing it, write a Python script to do so.
-    The script should:
-    1. Download the file (using requests/httpx).
-    2. Process it (using pandas/numpy).
-    3. Print the final answer to stdout.
+    Context:
+    - Current URL: {url}
+    - User Email: {email}
+    - User Secret: {secret}
+    - Last Observation/Result: {last_observation}
     
-    If the question is a simple knowledge question, just provide the answer directly.
+    Task:
+    Analyze the HTML content below and decide the next step.
+    The goal is to find the question, solve it (potentially using Python code), and submit the answer.
     
-    Output format:
-    If code is needed, wrap it in ```python ... ```.
-    If direct answer, just write the answer.
+    Capabilities:
+    1. "navigate": Go to a specific URL.
+    2. "execute_code": Run Python code. The code has access to the internet and environment variables. Use this to download files, process data, or even submit answers if complex requests are needed.
+    3. "submit": Submit a JSON payload to a URL.
+    4. "done": Stop the agent.
+    
+    IMPORTANT INSTRUCTIONS FOR LARGE FILES:
+    - If the question involves analyzing a file (CSV, JSON, etc.), DO NOT assume you know its content.
+    - Use "execute_code" to download the file and inspect it first (e.g., `print(df.head())`, `print(df.info())`).
+    - Only after understanding the data structure should you write the full solution code.
+    
+    HTML Content (Cleaned):
+    ```html
+    {cleaned_html}
+    ```
+    
+    Instructions:
+    - Look for hidden questions (e.g., in `atob` scripts, comments, or visible text).
+    - If you need to calculate something or download a file, use "execute_code".
+    - If you have the answer, look for a submission form or endpoint in the HTML and use "submit".
+    - The submission payload usually requires "email", "secret", "url" (current task url), and "answer".
+    - Return ONLY a valid JSON object with the following schema:
+    
+    {{
+        "thought": "Your reasoning here...",
+        "action": "navigate" | "execute_code" | "submit" | "done",
+        "url": "..." (if action is navigate),
+        "code": "..." (if action is execute_code),
+        "submission_url": "..." (if action is submit),
+        "payload": {{ ... }} (if action is submit)
+    }}
     """
     
     response = await query_llm(prompt)
     
-    # Check for code block
-    code_match = re.search(r'```python(.*?)```', response, re.DOTALL)
-    if code_match:
-        code = code_match.group(1).strip()
-        logger.info("Executing generated code...")
-        return execute_code(code)
-    else:
-        return response.strip()
+    # Clean up response to ensure JSON
+    try:
+        # Strip markdown code blocks if present
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0]
+            
+        return json.loads(response.strip())
+    except Exception as e:
+        logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
+        return {"thought": "Failed to parse JSON", "action": "done"}
 
 def execute_code(code: str):
     """
     Executes the given Python code using subprocess for better isolation.
     Writes code to a temp file and runs it.
+    Passes current environment variables (including API keys) to the subprocess.
     """
     # Create a temporary file
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
@@ -200,25 +264,27 @@ def execute_code(code: str):
     try:
         # Run the code
         # We use sys.executable to ensure we use the same python interpreter (with installed packages)
+        # We explicitly pass os.environ so the subprocess has access to API keys
         result = subprocess.run(
             [sys.executable, temp_name],
             capture_output=True,
             text=True,
-            timeout=30 # Safety timeout
+            timeout=30, # Safety timeout
+            env=os.environ.copy() # Pass environment variables
         )
         
         if result.returncode != 0:
             logger.error(f"Code execution error: {result.stderr}")
-            return None
+            return f"Error: {result.stderr}"
             
         return result.stdout.strip()
         
     except subprocess.TimeoutExpired:
         logger.error("Code execution timed out")
-        return None
+        return "Error: Execution timed out"
     except Exception as e:
         logger.error(f"Code execution failed: {e}")
-        return None
+        return f"Error: {str(e)}"
     finally:
         # Clean up temp file
         if os.path.exists(temp_name):
