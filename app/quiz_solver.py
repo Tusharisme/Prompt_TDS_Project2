@@ -394,6 +394,29 @@ async def get_agent_decision(
 
     # Clean up response to ensure JSON
     try:
+        # Strip markdown code blocks if present
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0]
+            
+        response = response.strip()
+
+        return json.loads(response)
+    except json.JSONDecodeError:
+        try:
+            # Fallback: Use ast.literal_eval for Python-style strings (handles single quotes, unescaped backslashes better)
+            import ast
+            return ast.literal_eval(response)
+        except Exception as e2:
+            logger.error(f"Failed to parse LLM decision (fallback failed): {e2}. Response: {response}")
+            return {"thought": "Failed to parse JSON", "action": "done"}
+    except Exception as e:
+        logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
+        return {"thought": "Failed to parse JSON", "action": "done"}
+
+
+def execute_code(code: str):
     """
     Executes the given Python code using subprocess for better isolation.
     Writes code to a temp file and runs it.
