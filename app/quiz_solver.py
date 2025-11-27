@@ -216,42 +216,31 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     Capabilities:
     1. "navigate": Go to a specific URL.
     2. "execute_code": Run Python code. The code has access to the internet and environment variables. Use this to download files, process data, or even submit answers if complex requests are needed.
-    3. "submit": Submit a JSON payload to a URL.
+    3. "submit": Submit a JSON payload to a URL. This is the PREFERRED way to submit the final answer.
     4. "done": Stop the agent.
     
-    IMPORTANT INSTRUCTIONS FOR LARGE FILES:
-    - If the question involves analyzing a file (CSV, JSON, etc.), DO NOT assume you know its content.
-    - Use "execute_code" to download the file and inspect it first (e.g., `print(df.head())`, `print(df.info())`).
-    - Only after understanding the data structure should you write the full solution code.
-
-    IMPORTANT INSTRUCTIONS FOR READING PAGE CONTENT:
-    - The current page's HTML is saved to a file named "{input_file_path}".
-    - ALWAYS read from "{input_file_path}" to extract data (like Base64 strings, lists, or hidden content) instead of copying it into your code.
-    - This avoids syntax errors with large strings.
-
-    Example of reading the file:
+    CRITICAL INSTRUCTIONS - READ CAREFULLY:
+    1. **NO HARDCODING LARGE DATA**: Never copy-paste large strings (like Base64 data, JSON dumps, or long text) from the HTML into your Python code. It causes SyntaxErrors and crashes.
+    2. **ALWAYS READ FROM FILE**: The current page's HTML is saved to `{input_file_path}`. You MUST write Python code to read this file and extract the data programmatically (e.g., using regex or BeautifulSoup).
+    3. **SUBMIT THE ANSWER**: Once you have calculated the answer, DO NOT just print it. You MUST use the "submit" action to send it to the correct URL.
+    
+    Example of reading the file correctly:
     ```python
+    import re
+    import os
+    
+    # Read the HTML file
     with open(r"{input_file_path}", "r", encoding="utf-8") as f:
-        html = f.read()
-    # ... extract data from html ...
+        html_content = f.read()
+        
+    # Extract data using regex (example for Base64)
+    # Adjust the regex to match the actual pattern in the HTML
+    match = re.search(r'some_pattern_before(.*?)some_pattern_after', html_content, re.DOTALL)
+    if match:
+        data = match.group(1)
+        # process data...
     ```
 
-    IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
-    - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
-    - Use this pattern at the top of your code:
-      ```python
-      import subprocess
-      import sys
-      def install(package):
-          subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-      
-      try:
-          import some_library
-      except ImportError:
-          install("some_library")
-          import some_library
-      ```
-    
     HTML Content (Cleaned):
     ```html
     {cleaned_html}
