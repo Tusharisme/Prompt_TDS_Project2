@@ -19,6 +19,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
+
 def get_driver():
     """
     Initializes a headless Chrome driver using system Chromium.
@@ -29,10 +30,10 @@ def get_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    
+
     # Explicitly set binary location for Chromium
     chrome_options.binary_location = "/usr/bin/chromium"
-    
+
     try:
         # Use system chromedriver
         service = Service("/usr/bin/chromedriver")
@@ -41,6 +42,7 @@ def get_driver():
     except Exception as e:
         logger.error(f"Failed to initialize Selenium driver: {e}")
         raise
+
 
 async def solve_quiz(task_url: str, email: str, secret: str):
     """
@@ -51,49 +53,66 @@ async def solve_quiz(task_url: str, email: str, secret: str):
     task_url = str(task_url)
     email = str(email)
     secret = str(secret)
-    
+
     driver = None
     try:
         driver = get_driver()
         current_url = task_url
         driver.get(current_url)
-        
+
         last_observation = "Started quiz."
-        
+
+        # Track if we've already successfully submitted an answer
+        has_submitted_successfully = False
+
         # Limit steps to prevent infinite loops
         for step in range(25):
             logger.info(f"--- Step {step} ---")
             logger.info(f"Current URL: {driver.current_url}")
-            
+
             # 1. Observe
             try:
                 # Wait briefly for dynamic content
-                await asyncio.sleep(1) 
+                await asyncio.sleep(1)
                 html_content = driver.page_source
-                
+
                 # Save HTML to a file for the agent to read
                 # Use temp directory to avoid permission issues
                 input_file_path = os.path.join(tempfile.gettempdir(), "input_page.html")
                 with open(input_file_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
-                    
+
             except Exception as e:
                 logger.error(f"Failed to read page: {e}")
                 last_observation = f"Error reading page: {e}"
                 continue
 
             # 2. Decide
-            decision = await get_agent_decision(html_content, driver.current_url, last_observation, email, secret, input_file_path)
+            # If we've already submitted successfully, short‑circuit and tell the agent we're done
+            if has_submitted_successfully:
+                logger.info(
+                    "Previous step already submitted successfully; stopping loop."
+                )
+                break
+
+            decision = await get_agent_decision(
+                html_content,
+                driver.current_url,
+                last_observation,
+                email,
+                secret,
+                input_file_path,
+            )
             logger.info(f"Agent Decision: {decision}")
-            
+
             if not decision:
                 logger.error("Agent returned no decision.")
                 break
-                
+
             action = decision.get("action")
             reasoning = decision.get("thought")
             logger.info(f"Reasoning: {reasoning}")
-            
+
             # 3. Act
             if action == "navigate":
                 url = decision.get("url")
@@ -103,7 +122,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                     last_observation = f"Navigated to {url}"
                 else:
                     last_observation = "Error: 'navigate' action missing 'url'."
-                    
+
             elif action == "execute_code":
                 code = decision.get("code")
                 if code:
@@ -113,68 +132,82 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                     last_observation = f"Code Execution Result:\n{output}"
                 else:
                     last_observation = "Error: 'execute_code' action missing 'code'."
-                    
+
             elif action == "submit":
                 submission_url = decision.get("submission_url")
                 payload = decision.get("payload", {})
-                
+
                 # Ensure email/secret are present if not provided by LLM (though LLM should provide them)
-                if "email" not in payload: payload["email"] = email
-                if "secret" not in payload: payload["secret"] = secret
-                
+                if "email" not in payload:
+                    payload["email"] = email
+                if "secret" not in payload:
+                    payload["secret"] = secret
+
                 logger.info(f"Submitting to {submission_url} with payload: {payload}")
-                
+
                 async with httpx.AsyncClient() as client:
                     try:
                         resp = await client.post(submission_url, json=payload)
                         resp.raise_for_status()
-                        
+
                         try:
                             result = resp.json()
                             logger.info(f"Submission result: {result}")
-                            
-                            if isinstance(result, dict) and result.get("correct", False):
+
+                            if isinstance(result, dict) and result.get(
+                                "correct", False
+                            ):
                                 next_url = result.get("url")
                                 if next_url:
                                     driver.get(next_url)
                                     last_observation = f"Correct answer! Moving to next level: {next_url}"
+                                    # Mark that we succeeded on this level; allow loop to continue for next one
+                                    has_submitted_successfully = True
                                 else:
                                     last_observation = "Correct answer! No next URL provided. Maybe done?"
+                                    has_submitted_successfully = True
                             else:
                                 # Handle JSON response that doesn't strictly follow expected schema
-                                last_observation = f"Submission successful. Server response: {result}"
-                                
+                                last_observation = (
+                                    f"Submission successful. Server response: {result}"
+                                )
+                                has_submitted_successfully = True
+
                         except ValueError:
                             # Response is not JSON, but status is 2xx (success)
-                            logger.info(f"Submission successful (non-JSON). Status: {resp.status_code}")
+                            logger.info(
+                                f"Submission successful (non-JSON). Status: {resp.status_code}"
+                            )
                             last_observation = f"Submission successful! Server returned status {resp.status_code}. Response: {resp.text[:200]}"
-                            
+                            has_submitted_successfully = True
+
                     except Exception as e:
                         # Detailed logging to debug empty error messages
-                        logger.error(f"Submission failed with exception type: {type(e).__name__}")
+                        logger.error(
+                            f"Submission failed with exception type: {type(e).__name__}"
+                        )
                         logger.error(f"Exception repr: {repr(e)}")
                         logger.error(f"Exception str: {str(e)}")
-                        
+
                         # If we got here but status code was 2xx, it might be a weird JSON error not caught by ValueError
-                        if 'resp' in locals() and 200 <= resp.status_code < 300:
-                             logger.info(f"Submission likely successful despite error. Status: {resp.status_code}")
-                             last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
-                             # FORCE BREAK: If we got a 2xx response, we are likely done.
-                             logger.info("Forcefully stopping agent after successful submission (fallback).")
-                             break
+                        if "resp" in locals() and 200 <= resp.status_code < 300:
+                            logger.info(
+                                f"Submission likely successful despite error. Status: {resp.status_code}"
+                            )
+                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
+                            has_submitted_successfully = True
                         else:
-                             last_observation = f"Submission failed: {type(e).__name__}: {str(e)}"
-                             
-                    # FORCE BREAK for successful JSON responses too
-                    if "Correct answer!" in last_observation or "Submission successful" in last_observation:
-                        if "Moving to next level" not in last_observation:
-                            logger.info("Forcefully stopping agent after successful submission.")
-                            break
-                        
+                            last_observation = (
+                                f"Submission failed: {type(e).__name__}: {str(e)}"
+                            )
+
+                    # If we know submission was successful and there is no explicit next level,
+                    # rely on has_submitted_successfully flag to stop further decisions.
+
             elif action == "done":
                 logger.info("Agent decided the task is complete.")
                 break
-                
+
             else:
                 logger.warning(f"Unknown action: {action}")
                 last_observation = f"Error: Unknown action '{action}'"
@@ -185,43 +218,75 @@ async def solve_quiz(task_url: str, email: str, secret: str):
         if driver:
             driver.quit()
 
+
 def clean_html(html: str) -> str:
     """
     Cleans HTML to reduce token count while preserving relevant content.
     Removes styles, SVGs, and unnecessary attributes.
     """
     soup = BeautifulSoup(html, "html.parser")
-    
+
     # Remove irrelevant tags
-    for tag in soup(["style", "svg", "path", "link", "meta", "noscript", "iframe", "footer", "header"]):
+    for tag in soup(
+        [
+            "style",
+            "svg",
+            "path",
+            "link",
+            "meta",
+            "noscript",
+            "iframe",
+            "footer",
+            "header",
+        ]
+    ):
         tag.decompose()
-        
+
     # Comments are PRESERVED as they often contain hidden clues for the agent
     # for element in soup(text=lambda text: isinstance(text, Comment)):
     #     element.extract()
-        
+
     # Clean attributes
     for tag in soup.find_all(True):
         # Keep only essential attributes
-        allowed_attrs = ['id', 'name', 'class', 'href', 'src', 'action', 'method', 'type', 'value', 'placeholder']
+        allowed_attrs = [
+            "id",
+            "name",
+            "class",
+            "href",
+            "src",
+            "action",
+            "method",
+            "type",
+            "value",
+            "placeholder",
+        ]
         attrs = dict(tag.attrs)
         for attr in attrs:
             if attr not in allowed_attrs:
                 del tag.attrs[attr]
-                
+
         # Truncate long class names or src (optional, but good for safety)
-        if 'src' in tag.attrs and len(tag['src']) > 500:
-            tag['src'] = tag['src'][:500] + "..."
-            
+        if "src" in tag.attrs and len(tag["src"]) > 500:
+            tag["src"] = tag["src"][:500] + "..."
+
     return str(soup)
 
-async def get_agent_decision(html: str, url: str, last_observation: str, email: str, secret: str, input_file_path: str) -> dict:
+
+async def get_agent_decision(
+    html: str,
+    url: str,
+    last_observation: str,
+    email: str,
+    secret: str,
+    input_file_path: str,
+) -> dict:
     """
     Asks the LLM what to do next based on the current page and history.
     """
     # Clean HTML to save tokens
     cleaned_html = clean_html(html)
-    
+
     # Truncate if still too long (safety net)
     if len(cleaned_html) > 50000:
         cleaned_html = cleaned_html[:50000] + "...(truncated)"
@@ -273,8 +338,15 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
 
     STOP LOOPING INSTRUCTIONS:
     - If you have already calculated the answer in a previous step, DO NOT calculate it again.
-    - IMMEDIATELY use the "submit" action with the calculated answer.
+    - If you already know the answer or see it mentioned in the page or in "Last Observation/Result", you MUST choose "submit" as your next and final action.
+    - When you know the answer, you MUST NOT choose "execute_code" or "navigate" again.
     - If submission fails with a non-JSON response (e.g. 200 OK text), it is likely a SUCCESS. Do not retry endlessly.
+
+    DECISION PRIORITY (ALWAYS FOLLOW THIS ORDER):
+    1) If you have the final answer -> use "submit".
+    2) If you do NOT yet have the answer but see data to download/process -> use "execute_code".
+    3) If you are clearly on a page that only tells you to go somewhere else -> use "navigate".
+    4) Use "done" ONLY when the entire quiz is finished and there is nothing left to submit or navigate to.
 
     IMPORTANT INSTRUCTIONS FOR MISSING LIBRARIES:
     - If you need a library that might not be installed (e.g., `faker`, `scipy`), you MUST install it within your code.
@@ -313,9 +385,9 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
         "payload": {{ ... }} (if action is submit)
     }}
     """
-    
+
     response = await query_llm(prompt)
-    
+
     # Clean up response to ensure JSON
     try:
         # Strip markdown code blocks if present
@@ -323,11 +395,12 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
             response = response.split("```json")[1].split("```")[0]
         elif "```" in response:
             response = response.split("```")[1].split("```")[0]
-            
+
         return json.loads(response.strip())
     except Exception as e:
         logger.error(f"Failed to parse LLM decision: {e}. Response: {response}")
         return {"thought": "Failed to parse JSON", "action": "done"}
+
 
 def execute_code(code: str):
     """
@@ -336,10 +409,12 @@ def execute_code(code: str):
     Passes current environment variables (including API keys) to the subprocess.
     """
     # Create a temporary file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8"
+    ) as f:
         f.write(code)
         temp_name = f.name
-    
+
     try:
         # Run the code
         # We use sys.executable to ensure we use the same python interpreter (with installed packages)
@@ -348,16 +423,16 @@ def execute_code(code: str):
             [sys.executable, temp_name],
             capture_output=True,
             text=True,
-            timeout=30, # Safety timeout
-            env=os.environ.copy() # Pass environment variables
+            timeout=30,  # Safety timeout
+            env=os.environ.copy(),  # Pass environment variables
         )
-        
+
         if result.returncode != 0:
             logger.error(f"Code execution error: {result.stderr}")
             return f"Error: {result.stderr}"
-            
+
         return result.stdout.strip()
-        
+
     except subprocess.TimeoutExpired:
         logger.error("Code execution timed out")
         return "Error: Execution timed out"
