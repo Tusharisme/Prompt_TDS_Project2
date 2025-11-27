@@ -38,128 +38,6 @@ def get_driver():
         # Use system chromedriver
         service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=chrome_options)
-        return driver
-    except Exception as e:
-        logger.error(f"Failed to initialize Selenium driver: {e}")
-        raise
-
-
-async def solve_quiz(task_url: str, email: str, secret: str):
-    """
-    Agentic loop to solve the quiz.
-    Uses an Observe-Decide-Act cycle powered by the LLM.
-    """
-    # Explicitly cast to string to handle Pydantic types (AnyHttpUrl, EmailStr)
-    task_url = str(task_url)
-    email = str(email)
-    secret = str(secret)
-
-    driver = None
-    try:
-        driver = get_driver()
-        current_url = task_url
-        driver.get(current_url)
-
-        last_observation = "Started quiz."
-
-        # Track if we've already successfully submitted an answer
-        has_submitted_successfully = False
-
-        # Limit steps to prevent infinite loops
-        for step in range(25):
-                break
-
-            action = decision.get("action")
-            reasoning = decision.get("thought")
-            logger.info(f"Reasoning: {reasoning}")
-
-            # 3. Act
-            if action == "navigate":
-                url = decision.get("url")
-                if url:
-                    # Resolve relative URLs
-                    from urllib.parse import urljoin
-                    full_url = urljoin(driver.current_url, url)
-                    
-                    logger.info(f"Navigating to {full_url}")
-                    driver.get(full_url)
-                    last_observation = f"Navigated to {full_url}"
-                else:
-                    last_observation = "Error: 'navigate' action missing 'url'."
-
-            elif action == "execute_code":
-                code = decision.get("code")
-                if code:
-                    logger.info("Executing code...")
-                    output = execute_code(code)
-                    logger.info(f"Code Output: {output}")
-                    last_observation = f"Code Execution Result:\n{output}"
-                else:
-                    last_observation = "Error: 'execute_code' action missing 'code'."
-
-            elif action == "submit":
-                submission_url = decision.get("submission_url")
-                payload = decision.get("payload", {})
-
-                # Ensure email/secret are present if not provided by LLM (though LLM should provide them)
-                if "email" not in payload:
-                    payload["email"] = email
-                if "secret" not in payload:
-                    payload["secret"] = secret
-
-                logger.info(f"Submitting to {submission_url} with payload: {payload}")
-
-                async with httpx.AsyncClient() as client:
-                    try:
-                        resp = await client.post(submission_url, json=payload)
-                        resp.raise_for_status()
-
-                        try:
-                            result = resp.json()
-                            logger.info(f"Submission result: {result}")
-
-                            if isinstance(result, dict) and result.get(
-                                "correct", False
-                            ):
-                                next_url = result.get("url")
-                                if next_url:
-                                    driver.get(next_url)
-                                    last_observation = f"Correct answer! Moving to next level: {next_url}"
-                                    # We have a next level, so we are NOT done. 
-                                    # Reset has_submitted_successfully so the loop continues for the new level.
-                                    has_submitted_successfully = False 
-                                else:
-                                    last_observation = "Correct answer! No next URL provided. Maybe done?"
-                                    has_submitted_successfully = True
-                            else:
-                                # Handle JSON response that doesn't strictly follow expected schema
-                                last_observation = (
-                                    f"Submission successful. Server response: {result}"
-                                )
-                                has_submitted_successfully = True
-
-                        except ValueError:
-                            # Response is not JSON, but status is 2xx (success)
-                            logger.info(
-                                f"Submission successful (non-JSON). Status: {resp.status_code}"
-                            )
-                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response: {resp.text[:200]}"
-                            has_submitted_successfully = True
-
-                    except Exception as e:
-                        # Detailed logging to debug empty error messages
-                        logger.error(
-                            f"Submission failed with exception type: {type(e).__name__}"
-                        )
-                        logger.error(f"Exception repr: {repr(e)}")
-                        logger.error(f"Exception str: {str(e)}")
-
-                        # If we got here but status code was 2xx, it might be a weird JSON error not caught by ValueError
-                        if "resp" in locals() and 200 <= resp.status_code < 300:
-                            logger.info(
-                                f"Submission likely successful despite error. Status: {resp.status_code}"
-                            )
-                            last_observation = f"Submission successful! Server returned status {resp.status_code}. Response text: {resp.text[:200]}"
                             has_submitted_successfully = True
                         else:
                             last_observation = (
@@ -182,6 +60,12 @@ async def solve_quiz(task_url: str, email: str, secret: str):
     finally:
         if driver:
             driver.quit()
+        # Cleanup scratchpad
+        if 'scratchpad_path' in locals() and os.path.exists(scratchpad_path):
+            try:
+                os.remove(scratchpad_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove scratchpad: {e}")
 
 
 def clean_html(html: str) -> str:
