@@ -72,7 +72,9 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                 html_content = driver.page_source
                 
                 # Save HTML to a file for the agent to read
-                with open("input_page.html", "w", encoding="utf-8") as f:
+                # Use temp directory to avoid permission issues
+                input_file_path = os.path.join(tempfile.gettempdir(), "input_page.html")
+                with open(input_file_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                     
             except Exception as e:
@@ -81,7 +83,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                 continue
 
             # 2. Decide
-            decision = await get_agent_decision(html_content, driver.current_url, last_observation, email, secret)
+            decision = await get_agent_decision(html_content, driver.current_url, last_observation, email, secret, input_file_path)
             logger.info(f"Agent Decision: {decision}")
             
             if not decision:
@@ -187,7 +189,7 @@ def clean_html(html: str) -> str:
             
     return str(soup)
 
-async def get_agent_decision(html: str, url: str, last_observation: str, email: str, secret: str) -> dict:
+async def get_agent_decision(html: str, url: str, last_observation: str, email: str, secret: str, input_file_path: str) -> dict:
     """
     Asks the LLM what to do next based on the current page and history.
     """
@@ -223,13 +225,13 @@ async def get_agent_decision(html: str, url: str, last_observation: str, email: 
     - Only after understanding the data structure should you write the full solution code.
 
     IMPORTANT INSTRUCTIONS FOR READING PAGE CONTENT:
-    - The current page's HTML is saved to a file named "input_page.html".
-    - ALWAYS read from "input_page.html" to extract data (like Base64 strings, lists, or hidden content) instead of copying it into your code.
+    - The current page's HTML is saved to a file named "{input_file_path}".
+    - ALWAYS read from "{input_file_path}" to extract data (like Base64 strings, lists, or hidden content) instead of copying it into your code.
     - This avoids syntax errors with large strings.
 
     Example of reading the file:
     ```python
-    with open("input_page.html", "r", encoding="utf-8") as f:
+    with open(r"{input_file_path}", "r", encoding="utf-8") as f:
         html = f.read()
     # ... extract data from html ...
     ```
