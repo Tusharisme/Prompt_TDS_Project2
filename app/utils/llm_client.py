@@ -35,7 +35,7 @@ async def _query_primary_gemini(model, contents):
 
 async def query_llm(contents: list | str, model_name: str = "gemini-2.0-flash-exp") -> str:
     """
-    Sends a prompt (text or list of text/images) to the Gemini LLM and returns the response text.
+    Sends a prompt (text, images, or audio) to the Gemini LLM and returns the response text.
     Uses the GEMINI_API_KEY from settings.
     Falls back to AI Pipe if primary fails.
     """
@@ -46,7 +46,19 @@ async def query_llm(contents: list | str, model_name: str = "gemini-2.0-flash-ex
     # 1. Try Primary Gemini API
     try:
         model = genai.GenerativeModel(model_name)
-        response = await _query_primary_gemini(model, contents)
+        
+        # Process contents for Primary API (Handle Audio Uploads)
+        processed_contents = []
+        for item in contents:
+            if isinstance(item, str) and (item.endswith(".mp3") or item.endswith(".wav")):
+                # It's a file path to an audio file
+                logger.info(f"Uploading audio file: {item}")
+                audio_file = genai.upload_file(item)
+                processed_contents.append(audio_file)
+            else:
+                processed_contents.append(item)
+
+        response = await _query_primary_gemini(model, processed_contents)
         return response.text
     except Exception as e:
         logger.warning(f"Primary Gemini API failed after retries: {e}")
@@ -76,11 +88,26 @@ async def _query_aipipe(contents: list, model_name: str) -> str:
     }
     
     # Convert contents to Gemini JSON format
-    # contents is a list of strings (text) or PIL Images
+    # contents is a list of strings (text), PIL Images, or audio file paths
     parts = []
     for item in contents:
         if isinstance(item, str):
-            parts.append({"text": item})
+            if item.endswith(".mp3") or item.endswith(".wav"):
+                # Handle Audio for AI Pipe (Base64)
+                import base64
+                with open(item, "rb") as f:
+                    audio_data = base64.b64encode(f.read()).decode("utf-8")
+                
+                mime_type = "audio/mp3" if item.endswith(".mp3") else "audio/wav"
+                parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": audio_data
+                    }
+                })
+            else:
+                # Regular text
+                parts.append({"text": item})
         elif hasattr(item, "save"): # Check if it's a PIL Image
             import io
             import base64
@@ -99,7 +126,8 @@ async def _query_aipipe(contents: list, model_name: str) -> str:
     }
     
     async with httpx.AsyncClient() as client:
-        response = await client.post(url, headers=headers, json=payload, timeout=60.0)
+        # Increased timeout for audio/image uploads
+        response = await client.post(url, headers=headers, json=payload, timeout=120.0)
         response.raise_for_status()
         result = response.json()
         
