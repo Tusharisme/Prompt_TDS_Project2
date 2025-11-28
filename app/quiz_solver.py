@@ -581,6 +581,7 @@ async def get_agent_decision(
         *   Trust your result if it repeats.
 
     # VERIFICATION CHECKLIST
+    *   **TRUST YOUR SCRATCHPAD**: If you have calculated an answer and saved it to the scratchpad, SUBMIT IT. Do not re-calculate unless you are sure it is wrong.
     *   **Extract, Don't Hardcode**: Did you extract ALL data from HTML using BeautifulSoup?
     *   **Print to Verify**: Did you print extracted data before using it?
     *   **Filter Data**: Did you remove nulls/None?
