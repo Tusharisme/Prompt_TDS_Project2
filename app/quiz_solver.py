@@ -187,6 +187,15 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                 if next_url:
                                     driver.get(next_url)
                                     last_observation = f"Correct answer! Moving to next level: {next_url}"
+                                    
+                                    # Clear scratchpad for the new level to prevent state pollution
+                                    try:
+                                        with open(scratchpad_path, "w", encoding="utf-8") as f:
+                                            f.write("")
+                                        logger.info("Scratchpad cleared for next level.")
+                                    except Exception as e:
+                                        logger.warning(f"Failed to clear scratchpad: {e}")
+
                                     # We have a next level, so we are NOT done. 
                                     # Reset has_submitted_successfully so the loop continues for the new level.
                                     has_submitted_successfully = False 
