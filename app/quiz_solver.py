@@ -404,34 +404,12 @@ async def get_agent_decision(
 
     try:
         # Prepare the content list for Gemini (Multimodal)
-        # Note: We need to import model from somewhere or pass it in. 
-        # Assuming query_llm handles text only, we need to use the genai model directly.
-        # However, to keep it simple and compatible with existing structure, let's assume query_llm can handle this 
-        # OR we need to instantiate the model here.
-        # For now, let's use the existing query_llm which might not support images yet.
-        # If we need images, we must use google.generativeai directly.
-        
-        # Checking imports... we don't have google.generativeai imported.
-        # Let's use query_llm for text and add image support if possible, or just skip image if query_llm doesn't support it.
-        # BUT, the user explicitly asked for Vision.
-        
-        # Let's try to use the `model` object if it's available globally or import it.
-        # Since I cannot see where `model` is defined, I will use `query_llm` for now and append the image description if needed.
-        # Wait, the previous code I wrote used `await model.generate_content_async`. 
-        # This implies `model` was expected to be there. But it's not in the imports!
-        # I need to fix this. I will import google.generativeai.
-        
-        import google.generativeai as genai
-        # We need the API key. It should be in settings.
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-2.0-flash-exp') # Or whatever model is available
-        
         contents = [system_prompt, user_message]
         if screenshot_image:
             contents.append(screenshot_image)
 
-        response = await model.generate_content_async(contents)
-        response_text = response.text
+        # Use the shared utility function
+        response_text = await query_llm(contents)
         
         # Parse XML-style output
         import re

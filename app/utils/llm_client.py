@@ -8,18 +8,20 @@ try:
 except Exception as e:
     logger.error(f"Failed to configure Gemini API: {e}")
 
-async def query_llm(prompt: str, model_name: str = "gemini-2.0-flash") -> str:
+async def query_llm(contents: list | str, model_name: str = "gemini-2.0-flash-exp") -> str:
     """
-    Sends a prompt to the Gemini LLM and returns the response text.
+    Sends a prompt (text or list of text/images) to the Gemini LLM and returns the response text.
     Uses the GEMINI_API_KEY from settings.
     """
     try:
         model = genai.GenerativeModel(model_name)
-        # Gemini calls are synchronous in the python SDK usually, but we can run them in a thread if needed.
-        # For simplicity in this async context, we'll just call it directly. 
-        # If it blocks too much, we can wrap in run_in_executor.
         
-        response = model.generate_content(prompt)
+        # Ensure contents is in the correct format
+        if isinstance(contents, str):
+            contents = [contents]
+            
+        # Use async generation
+        response = await model.generate_content_async(contents)
         return response.text
     except Exception as e:
         logger.error(f"LLM query failed: {e}")
