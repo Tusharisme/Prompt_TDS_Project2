@@ -494,6 +494,45 @@ async def get_agent_decision(
         - **DO NOT write to the current directory** (Permission Denied).
         - **ALWAYS use `/tmp/`** (e.g., `/tmp/data.csv`) or Python's `tempfile` module for all file operations.
 
+    # ⚠️ NO HARDCODING - CRITICAL RULE ⚠️
+    **NEVER HARDCODE DATA FROM THE PAGE!**
+    - **WRONG**: Typing coordinates, lists, or dictionaries manually in your code
+    - **RIGHT**: Extracting data from HTML using BeautifulSoup and parsing it
+    
+    **Example - WRONG (DO NOT DO THIS):**
+    ```python
+    # ❌ BAD: Hardcoded data from the page
+    city_data = {{
+      "New York": [40.7128, -74.0060],
+      "Tokyo": [35.6762, 139.6503]
+    }}
+    ```
+    
+    **Example - CORRECT:**
+    ```python
+    # ✅ GOOD: Extract from HTML
+    from bs4 import BeautifulSoup
+    import json
+    
+    with open(r"{input_file_path}", "r", encoding="utf-8") as f:
+        html = f.read()
+    
+    soup = BeautifulSoup(html, "html.parser")
+    
+    # Find the <pre> tag containing JSON data
+    pre_tag = soup.find("pre", id="city-data")  # Adjust selector as needed
+    if pre_tag:
+        json_text = pre_tag.get_text()
+        city_data = json.loads(json_text)
+        print("Extracted data:", city_data)  # Always verify!
+    ```
+    
+    **WHY THIS MATTERS:**
+    - The actual data on the server may differ slightly from what you see
+    - Even tiny differences (0.0001) can change calculation results
+    - Hardcoding guarantees wrong answers
+    - **ALWAYS extract, ALWAYS verify by printing**
+
     # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
     - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
     - **INSPECT FIRST**: Use `execute_code` to PRINT the content around the keyword.
@@ -508,23 +547,34 @@ async def get_agent_decision(
       ```
     - **SELF-CORRECT**: Use the printed context to write the correct regex in the next step.
 
-    4.  **UNIVERSAL DATA INSPECTION (CRITICAL)**:
-        *   **NEVER assume data structure.** APIs change.
-        *   **ALWAYS INSPECT FIRST**:
-            *   If it's a list: Print `len(data)` and `data[0]`.
-            *   If it's a dict: Print `data.keys()`.
-            *   If it's a string: Print the first 500 chars.
-        *   **STABILITY CHECK**:
-            *   If you calculate the **SAME ANSWER TWICE** in a row -> **SUBMIT IT IMMEDIATELY**.
-            *   **DO NOT VERIFY A THIRD TIME.** Infinite verification loops are a failure.
-            *   Trust your result if it repeats.
+    # UNIVERSAL DATA INSPECTION (CRITICAL)
+    **NEVER assume data structure.** APIs change.
+    **ALWAYS INSPECT FIRST**:
+        *   If it's a list: Print `len(data)` and `data[0]`.
+        *   If it's a dict: Print `data.keys()`.
+        *   If it's a string: Print the first 500 chars.
+    **EXTRACTION WORKFLOW**:
+        1. Read HTML from `{input_file_path}`
+        2. Use BeautifulSoup to find the data element
+        3. Extract the text/content
+        4. **Print it to verify correctness**
+        5. Parse (JSON/CSV/regex)
+        6. **Print parsed result to verify**
+        7. Perform calculation
+        8. Submit answer
+    **STABILITY CHECK**:
+        *   If you calculate the **SAME ANSWER TWICE** in a row -> **SUBMIT IT IMMEDIATELY**.
+        *   **DO NOT VERIFY A THIRD TIME.** Infinite verification loops are a failure.
+        *   Trust your result if it repeats.
 
-    5.  **VERIFICATION CHECKLIST**:
-        *   **Filter Data**: Did you remove nulls/None?
-        *   **Clean Strings**: Did you remove currency symbols ($), commas (,), or extra spaces?
-        *   **Type Conversion**: Did you convert strings to floats/ints before math?
-        *   **Edge Cases**: Did you handle empty lists or missing keys?
-        *   **Double Check**: If the answer seems too simple or too complex, re-read the HTML instructions.
+    # VERIFICATION CHECKLIST
+    *   **Extract, Don't Hardcode**: Did you extract ALL data from HTML using BeautifulSoup?
+    *   **Print to Verify**: Did you print extracted data before using it?
+    *   **Filter Data**: Did you remove nulls/None?
+    *   **Clean Strings**: Did you remove currency symbols ($), commas (,), or extra spaces?
+    *   **Type Conversion**: Did you convert strings to floats/ints before math?
+    *   **Edge Cases**: Did you handle empty lists or missing keys?
+    *   **Double Check**: If the answer seems too simple or too complex, re-read the HTML instructions.
     
     # TOOLS
     1. `navigate(url)`: Go to a URL.
