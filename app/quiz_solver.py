@@ -85,6 +85,8 @@ async def solve_quiz(task_url: str, email: str, secret: str):
         step = 0
         from app.config import global_state  # Import state
         
+        level_start_url = None
+        
         while True:
             # Check for abort signal from main.py (concurrency safety)
             if global_state.abort_solver:
@@ -93,6 +95,15 @@ async def solve_quiz(task_url: str, email: str, secret: str):
 
             logger.info(f"--- Step {step} ---")
             logger.info(f"Current URL: {driver.current_url}")
+            
+            # Track the URL where the level started
+            if attempts_on_current_level == 0 and not level_start_url:
+                 level_start_url = driver.current_url
+                 logger.info(f"Level Start URL set to: {level_start_url}")
+            elif attempts_on_current_level == 0:
+                 # If we are at attempt 0 but level_start_url is set, it might be from previous loop
+                 # Update it if we are on a new page (logic handled by reset below)
+                 pass
 
             # Read scratchpad content
             try:
@@ -143,6 +154,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                 scratchpad_path,
                 screenshot_image,
                 known_submission_url,
+                level_start_url,
             )
             logger.info(f"Agent Decision: {decision}")
 
@@ -224,7 +236,12 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                     attempts_on_current_level = 0
                                     last_submitted_answer = None
                                     consecutive_same_answer_count = 0
+                                    # Reset retry counters for new level
+                                    attempts_on_current_level = 0
+                                    last_submitted_answer = None
+                                    consecutive_same_answer_count = 0
                                     pending_soft_pass_url = None
+                                    level_start_url = None # Reset for next level
 
                                     # We have a next level, so we are NOT done. 
                                     # Reset has_submitted_successfully so the loop continues for the new level.
@@ -275,8 +292,13 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                                 attempts_on_current_level = 0
                                                 last_submitted_answer = None
                                                 consecutive_same_answer_count = 0
+                                                # Reset retry counters for new level
+                                                attempts_on_current_level = 0
+                                                last_submitted_answer = None
+                                                consecutive_same_answer_count = 0
                                                 pending_soft_pass_url = None
                                                 has_submitted_successfully = False
+                                                level_start_url = None # Reset for next level
                                             else:
                                                 logger.info("No soft pass URL available. Stopping.")
                                                 has_submitted_successfully = True
@@ -433,19 +455,6 @@ def clean_html(html: str) -> str:
 async def get_agent_decision(
     html_content: str,
     current_url: str,
-    last_observation: str,
-    email: str,
-    secret: str,
-    input_file_path: str,
-    scratchpad_content: str, # New arg
-    scratchpad_path: str,    # New arg
-    screenshot_image=None,
-    known_submission_url: str = None, # New arg
-) -> dict:
-    """
-    Asks the LLM for the next step based on the current state and visual context.
-    """
-    # Clean HTML to save tokens
     cleaned_html = clean_html(html_content)
     # Truncate if still too long (safety net)
     if len(cleaned_html) > 50000:
@@ -610,6 +619,8 @@ async def get_agent_decision(
         *   Trust your result if it repeats.
 
     # VERIFICATION CHECKLIST
+    *   **USE LEVEL START URL**: When constructing the JSON payload, the "url" field MUST be the `Level Start URL` provided in the user message, NOT the `Current URL`, unless they are the same. The server expects the URL where the problem started.
+    *   **EXPLORE IF NEEDED**: If the current page doesn't have a submission form or the answer, look for links like "Submit", "Next", "Quiz", or "API" and navigate to them.
     *   **TRUST YOUR SCRATCHPAD**: If you have calculated an answer and saved it to the scratchpad, SUBMIT IT. Do not re-calculate unless you are sure it is wrong.
     *   **HANDLE 400/500 ERRORS**: If a submission fails with a 400 or 500 error, DO NOT resubmit the same payload. Check your JSON structure, field names, and data types.
     *   **Extract, Don't Hardcode**: Did you extract ALL data from HTML using BeautifulSoup?
@@ -644,7 +655,9 @@ async def get_agent_decision(
     </payload>
     """
     
-    user_message = f"Current URL: {current_url}\nLast Observation: {last_observation}\nScratchpad:\n{scratchpad_content}\n\nHTML Snippet (first 2000 chars):\n{cleaned_html[:2000]}..."
+    """
+    
+    user_message = f"Current URL: {current_url}\nLevel Start URL: {level_start_url} (Use this for 'url' in submission payload)\nLast Observation: {last_observation}\nScratchpad:\n{scratchpad_content}\n\nHTML Snippet (first 2000 chars):\n{cleaned_html[:2000]}..."
 
     try:
         # Prepare the content list for Gemini (Multimodal)
