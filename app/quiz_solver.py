@@ -176,19 +176,6 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                 logger.info(f"Submitting to {submission_url} with payload: {payload}")
 
                 async with httpx.AsyncClient() as client:
-                    try:
-                        resp = await client.post(submission_url, json=payload)
-                        resp.raise_for_status()
-
-                        try:
-                            result = resp.json()
-                            logger.info(f"Submission result: {result}")
-
-                            if isinstance(result, dict) and result.get(
-                                "correct", False
-                            ):
-                                # Success! Remember this URL for future levels
-                                known_submission_url = submission_url
                                 logger.info(f"Learned submission URL: {known_submission_url}")
 
                                 next_url = result.get("url")
@@ -348,9 +335,18 @@ async def get_agent_decision(
     audio_file_path = None
     soup = BeautifulSoup(html_content, "html.parser")
     audio_tag = soup.find("audio")
-    if audio_tag and audio_tag.get("src"):
-        audio_src = audio_tag["src"]
-        logger.info(f"Found audio source: {audio_src}")
+    if audio_tag:
+        # Check for direct src attribute first
+        audio_src = audio_tag.get("src")
+        
+        # If not found, check for <source> child element
+        if not audio_src:
+            source_tag = audio_tag.find("source")
+            if source_tag:
+                audio_src = source_tag.get("src")
+        
+        if audio_src:
+            logger.info(f"Found audio source: {audio_src}")
         
         # Handle relative URLs
         if not audio_src.startswith("http"):
