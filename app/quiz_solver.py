@@ -592,6 +592,26 @@ async def get_agent_decision(
        - **ALWAYS** extract this data programmatically using `json.loads()` or regex.
        - **NEVER** manually copy-paste data (hardcoding).
 
+    # ERROR RECOVERY & FALLBACKS
+    1. **LIBRARY FAILURES**:
+       - If `pandas` fails, try standard `csv` or `json` modules.
+       - If `BeautifulSoup` fails, try regex (carefully) or string splitting.
+    2. **EXECUTION ERRORS**:
+       - If `execute_code` returns an error, **READ THE ERROR**.
+       - Fix the code (e.g., install missing module, fix syntax) and retry.
+       - **DO NOT** repeat the same failing code.
+
+    # COMPLEX DATA STRATEGY (NO HALLUCINATIONS)
+    1. **NESTED JSON/DICT**:
+       - Do not guess keys. **PRINT `data.keys()`** at every level.
+       - Example: `print(data.keys())` -> `print(data['users'][0].keys())`.
+    2. **MESSY HTML**:
+       - If `find()` returns None, print the parent element's HTML to see structure.
+       - Use `soup.prettify()` on small sections to understand nesting.
+    3. **CSV/TABLES**:
+       - If headers are missing, use `header=None` in pandas.
+       - Print the first 5 rows (`df.head()`) to verify alignment.
+
     # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
     - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
     - **INSPECT FIRST**: Use `execute_code` to PRINT the content around the keyword.
