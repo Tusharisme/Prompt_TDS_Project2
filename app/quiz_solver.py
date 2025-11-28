@@ -603,7 +603,7 @@ async def get_agent_decision(
        - ALWAYS print `df.head()` and `df.columns` immediately after loading.
        - Check: Does it have a header? Are values numeric? Is there garbage text?
     2. **VERIFY FILTERS**:
-       - Print row counts before and after filtering: `print(f"Rows: {len(df)} -> {len(filtered_df)}")`
+       - Print row counts before and after filtering: `print(f"Rows: {{len(df)}} -> {{len(filtered_df)}}")`
        - If filtered count is 0, your logic is wrong.
     3. **DEBUGGING WRONG ANSWERS**:
        - If the server rejects your answer, DO NOT run the same code again.
