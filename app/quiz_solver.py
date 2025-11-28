@@ -173,9 +173,23 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                 if "secret" not in payload:
                     payload["secret"] = secret
 
+
                 logger.info(f"Submitting to {submission_url} with payload: {payload}")
 
                 async with httpx.AsyncClient() as client:
+                    try:
+                        resp = await client.post(submission_url, json=payload)
+                        resp.raise_for_status()
+
+                        try:
+                            result = resp.json()
+                            logger.info(f"Submission result: {result}")
+
+                            if isinstance(result, dict) and result.get(
+                                "correct", False
+                            ):
+                                # Success! Remember this URL for future levels
+                                known_submission_url = submission_url
                                 logger.info(f"Learned submission URL: {known_submission_url}")
 
                                 next_url = result.get("url")
@@ -234,6 +248,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
 
                     # If we know submission was successful and there is no explicit next level,
                     # rely on has_submitted_successfully flag to stop further decisions.
+
 
             elif action == "done":
                 logger.info("Agent decided the task is complete.")
