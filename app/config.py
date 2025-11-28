@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     STUDENT_SECRET: str
     STUDENT_SECRET: str
     GEMINI_API_KEY: str
+    AIPIPE_TOKEN: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: Optional[str] = ""  # comma-separated
