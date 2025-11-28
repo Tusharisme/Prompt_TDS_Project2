@@ -655,7 +655,7 @@ async def get_agent_decision(
     </payload>
     """
     
-    """
+
     
     user_message = f"Current URL: {current_url}\nLevel Start URL: {level_start_url} (Use this for 'url' in submission payload)\nLast Observation: {last_observation}\nScratchpad:\n{scratchpad_content}\n\nHTML Snippet (first 2000 chars):\n{cleaned_html[:2000]}..."
 
