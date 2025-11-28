@@ -21,3 +21,4 @@ pillow
 pypdf
 faker
 json-repair
+tenacity
