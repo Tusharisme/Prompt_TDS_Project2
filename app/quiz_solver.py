@@ -366,26 +366,6 @@ async def get_agent_decision(
       idx = html.find("Data Dump")
       if idx != -1:
           print(f"CONTEXT: {{html[idx:idx+500]}}")
-      else:
-          print("Keyword 'Data Dump' not found.")
-      ```
-    - **SELF-CORRECT**: Use the printed context to write the correct regex in the next step.
-
-    # VERIFICATION CHECKLIST
-    - Did I filter the data correctly? (e.g., "Electronics" only?)
-    - Did I perform the correct math? (e.g., sum of price * stock?)
-    - Did I format the answer correctly? (e.g., integer vs string?)
-    
-    # TOOLS
-    1. `navigate(url)`: Go to a URL.
-    2. `execute_code(code)`: Run Python code. 
-       - HTML file: `{input_file_path}`
-       - Scratchpad file: `{scratchpad_path}` (Read/Write allowed)
-    3. `submit(submission_url, payload)`: Submit the answer.
-    
-    # OUTPUT FORMAT
-    You MUST respond in this EXACT XML-style format:
-    
     <thought>
     Your reasoning here. Explain what you see in the screenshot and HTML.
     </thought>
