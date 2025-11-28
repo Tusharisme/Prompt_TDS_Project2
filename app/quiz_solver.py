@@ -273,6 +273,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                             else:
                                                 logger.info("No soft pass URL available. Stopping.")
                                                 has_submitted_successfully = True
+                                                break
                                         else:
                                             last_observation = f"Incorrect answer. Try a different approach. (Attempt {attempts_on_current_level}/10 failed)"
                                     else:
