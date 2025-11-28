@@ -366,6 +366,39 @@ async def get_agent_decision(
       idx = html.find("Data Dump")
       if idx != -1:
           print(f"CONTEXT: {{html[idx:idx+500]}}")
+      else:
+          print("Keyword 'Data Dump' not found.")
+      ```
+    - **SELF-CORRECT**: Use the printed context to write the correct regex in the next step.
+
+    4.  **UNIVERSAL DATA INSPECTION (CRITICAL)**:
+        *   **NEVER assume data structure.** APIs change.
+        *   **ALWAYS INSPECT FIRST**:
+            *   If it's a list: Print `len(data)` and `data[0]`.
+            *   If it's a dict: Print `data.keys()`.
+            *   If it's a string: Print the first 500 chars.
+        *   **STABILITY CHECK**:
+            *   If you calculate the **SAME ANSWER TWICE** in a row -> **SUBMIT IT IMMEDIATELY**.
+            *   **DO NOT VERIFY A THIRD TIME.** Infinite verification loops are a failure.
+            *   Trust your result if it repeats.
+
+    5.  **VERIFICATION CHECKLIST**:
+        *   **Filter Data**: Did you remove nulls/None?
+        *   **Clean Strings**: Did you remove currency symbols ($), commas (,), or extra spaces?
+        *   **Type Conversion**: Did you convert strings to floats/ints before math?
+        *   **Edge Cases**: Did you handle empty lists or missing keys?
+        *   **Double Check**: If the answer seems too simple or too complex, re-read the HTML instructions.
+    
+    # TOOLS
+    1. `navigate(url)`: Go to a URL.
+    2. `execute_code(code)`: Run Python code. 
+       - HTML file: `{input_file_path}`
+       - Scratchpad file: `{scratchpad_path}` (Read/Write allowed)
+    3. `submit(submission_url, payload)`: Submit the answer.
+    
+    # OUTPUT FORMAT
+    You MUST respond in this EXACT XML-style format:
+    
     <thought>
     Your reasoning here. Explain what you see in the screenshot and HTML.
     </thought>
@@ -390,6 +423,7 @@ async def get_agent_decision(
 
         # Use the shared utility function
         response_text = await query_llm(contents)
+        logger.info(f"Raw LLM Response: {response_text}") # Added logging
         
         # Parse XML-style output
         import re
