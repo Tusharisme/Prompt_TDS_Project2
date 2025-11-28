@@ -80,8 +80,10 @@ async def solve_quiz(task_url: str, email: str, secret: str):
         consecutive_same_answer_count = 0  # Count duplicate submissions
         pending_soft_pass_url = None  # Store soft pass URL if offered
 
-        # Limit steps to prevent infinite loops
-        for step in range(25):
+        # Limit steps to prevent infinite loops - REMOVED for production
+        # We rely on the per-level retry logic and external timeouts
+        step = 0
+        while True:
             logger.info(f"--- Step {step} ---")
             logger.info(f"Current URL: {driver.current_url}")
 
@@ -246,9 +248,9 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                         last_submitted_answer = None
                                         consecutive_same_answer_count = 0
                                         
-                                        # Check if we've exhausted all 3 approaches
-                                        if attempts_on_current_level >= 3:
-                                            logger.info("All 3 approaches failed.")
+                                        # Check if we've exhausted all 10 approaches
+                                        if attempts_on_current_level >= 10:
+                                            logger.info("All 10 approaches failed.")
                                             if pending_soft_pass_url:
                                                 logger.info(f"Taking soft pass to: {pending_soft_pass_url}")
                                                 driver.get(pending_soft_pass_url)
@@ -272,7 +274,7 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                                 logger.info("No soft pass URL available. Stopping.")
                                                 has_submitted_successfully = True
                                         else:
-                                            last_observation = f"Incorrect answer. Try a different approach. (Attempt {attempts_on_current_level}/3 failed)"
+                                            last_observation = f"Incorrect answer. Try a different approach. (Attempt {attempts_on_current_level}/10 failed)"
                                     else:
                                         last_observation = f"Incorrect answer: {current_answer}. Submit again to confirm approach, or try a different method."
                                 else:
@@ -320,6 +322,9 @@ async def solve_quiz(task_url: str, email: str, secret: str):
             else:
                 logger.warning(f"Unknown action: {action}")
                 last_observation = f"Error: Unknown action '{action}'"
+            
+            # Increment step counter manually since we are in a while True loop
+            step += 1
 
     except Exception as e:
         logger.error(f"Fatal error in solver loop: {e}")
