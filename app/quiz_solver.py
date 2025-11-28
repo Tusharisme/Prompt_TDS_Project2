@@ -455,6 +455,20 @@ def clean_html(html: str) -> str:
 async def get_agent_decision(
     html_content: str,
     current_url: str,
+    last_observation: str,
+    email: str,
+    secret: str,
+    input_file_path: str,
+    scratchpad_content: str,
+    scratchpad_path: str,
+    screenshot_image=None,
+    known_submission_url: str = None,
+    level_start_url: str = None,
+) -> dict:
+    """
+    Asks the LLM for the next step based on the current state and visual context.
+    """
+    # Clean HTML to save tokens
     cleaned_html = clean_html(html_content)
     # Truncate if still too long (safety net)
     if len(cleaned_html) > 50000:
