@@ -120,6 +120,19 @@ async def solve_quiz(task_url: str, email: str, secret: str):
             decision = await get_agent_decision(
                 html_content,
                 driver.current_url,
+                last_observation,
+                email,
+                secret,
+                input_file_path,
+                scratchpad_content,
+                scratchpad_path,
+                screenshot_image,
+                known_submission_url,
+            )
+            logger.info(f"Agent Decision: {decision}")
+
+            if not decision:
+                logger.error("Agent returned no decision.")
                 break
 
             action = decision.get("action")
@@ -385,7 +398,7 @@ async def get_agent_decision(
     - HTML Content: (Provided below)
     - Visual Context: (Screenshot provided)
     - Audio Context: {"(Audio file provided)" if audio_file_path else "(No audio detected)"}
-    - Known Submission URL: {known_submission_url if known_submission_url else "(Not yet discovered)"}
+    - Known Submission URL: {known_submission_url if known_submission_url else "(Not yet discovered)"} (Use this ONLY if the current page does not provide a specific submission URL)
     
     # CRITICAL INSTRUCTIONS
     1. **MEMORY**: Use your Scratchpad! 
