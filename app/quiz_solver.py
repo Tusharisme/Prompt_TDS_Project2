@@ -558,6 +558,14 @@ async def get_agent_decision(
     8. **FILE SYSTEM**: 
         - **DO NOT write to the current directory** (Permission Denied).
         - **ALWAYS use `/tmp/`** (e.g., `/tmp/data.csv`) or Python's `tempfile` module for all file operations.
+    9. **LEVEL AWARENESS**:
+       - Focus ONLY on the current URL's task.
+       - If you are on `/demo2-checksum`, do NOT try to solve `/demo2` again.
+       - Do NOT regress to previous levels.
+    10. **HTML vs DATA**:
+       - `requests.get(url).text` returns HTML source code, NOT just the visible text/key.
+       - **NEVER** do `key = requests.get(previous_url).text`. This gets the whole HTML page!
+       - If you need a previous answer, **READ IT FROM THE SCRATCHPAD**.
 
     # ⚠️ NO HARDCODING - CRITICAL RULE ⚠️
     **NEVER HARDCODE DATA FROM THE PAGE!**
