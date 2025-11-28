@@ -318,6 +318,35 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                             last_observation = (
                                 f"Submission failed: {type(e).__name__}: {str(e)}"
                             )
+                            
+                            # Increment attempts on exception to prevent infinite loops
+                            attempts_on_current_level += 1
+                            logger.warning(f"Submission exception. Attempt {attempts_on_current_level}/10 failed.")
+                            
+                            if attempts_on_current_level >= 10:
+                                logger.info("All 10 approaches failed (due to exceptions).")
+                                if pending_soft_pass_url:
+                                    logger.info(f"Taking soft pass to: {pending_soft_pass_url}")
+                                    driver.get(pending_soft_pass_url)
+                                    last_observation = f"All approaches exhausted (exceptions). Taking soft pass to: {pending_soft_pass_url}"
+                                    
+                                    # Clear scratchpad
+                                    try:
+                                        with open(scratchpad_path, "w", encoding="utf-8") as f:
+                                            f.write("")
+                                    except Exception as e:
+                                        logger.warning(f"Failed to clear scratchpad: {e}")
+                                    
+                                    # Reset counters
+                                    attempts_on_current_level = 0
+                                    last_submitted_answer = None
+                                    consecutive_same_answer_count = 0
+                                    pending_soft_pass_url = None
+                                    has_submitted_successfully = False
+                                else:
+                                    logger.info("No soft pass URL available. Stopping.")
+                                    has_submitted_successfully = True
+                                    break
 
                     # If we know submission was successful and there is no explicit next level,
                     # rely on has_submitted_successfully flag to stop further decisions.
@@ -582,6 +611,7 @@ async def get_agent_decision(
 
     # VERIFICATION CHECKLIST
     *   **TRUST YOUR SCRATCHPAD**: If you have calculated an answer and saved it to the scratchpad, SUBMIT IT. Do not re-calculate unless you are sure it is wrong.
+    *   **HANDLE 400/500 ERRORS**: If a submission fails with a 400 or 500 error, DO NOT resubmit the same payload. Check your JSON structure, field names, and data types.
     *   **Extract, Don't Hardcode**: Did you extract ALL data from HTML using BeautifulSoup?
     *   **Print to Verify**: Did you print extracted data before using it?
     *   **Filter Data**: Did you remove nulls/None?
