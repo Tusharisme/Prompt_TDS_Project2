@@ -83,7 +83,14 @@ async def solve_quiz(task_url: str, email: str, secret: str):
         # Limit steps to prevent infinite loops - REMOVED for production
         # We rely on the per-level retry logic and external timeouts
         step = 0
+        from app.config import global_state  # Import state
+        
         while True:
+            # Check for abort signal from main.py (concurrency safety)
+            if global_state.abort_solver:
+                logger.warning("Solver received ABORT signal. Exiting to allow new instance.")
+                break
+
             logger.info(f"--- Step {step} ---")
             logger.info(f"Current URL: {driver.current_url}")
 

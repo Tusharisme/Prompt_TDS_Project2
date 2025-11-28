@@ -120,6 +120,19 @@ async def accept_quiz(payload: QuizRequest, request: Request, background_tasks: 
     message = "Secret verified. Phase 1 OK. Solver started in background."
     logger.info(message)
     
+    # Graceful Restart Logic:
+    # 1. Signal any running solver to abort
+    from app.config import global_state
+    import asyncio
+    
+    global_state.abort_solver = True
+    logger.info("Signaled existing solver to abort. Waiting 1s...")
+    await asyncio.sleep(1)
+    
+    # 2. Reset flag and start new solver
+    global_state.abort_solver = False
+    logger.info("Starting new solver instance.")
+    
     # Start the solver
     background_tasks.add_task(solve_quiz, payload.url, payload.email, payload.secret)
 

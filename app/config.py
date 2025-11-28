@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     # Required by the project spec
     STUDENT_EMAIL: str
     STUDENT_SECRET: str
-    STUDENT_SECRET: str
     GEMINI_API_KEY: str
     AIPIPE_TOKEN: Optional[str] = None
 
@@ -28,6 +27,12 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         if not self.CORS_ORIGINS:
             return []
-        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 settings = Settings()
+
+# Global state for managing solver concurrency
+class GlobalState:
+    abort_solver: bool = False
+
+global_state = GlobalState()
