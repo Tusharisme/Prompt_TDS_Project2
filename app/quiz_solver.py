@@ -322,6 +322,156 @@ async def get_agent_decision(
     """
     # Clean HTML to save tokens
     cleaned_html = clean_html(html_content)
+    # Truncate if still too long (safety net)
+    if len(cleaned_html) > 50000:
+        cleaned_html = cleaned_html[:50000] + "...(truncated)"
+
+    # Detect and download audio
+    audio_file_path = None
+    soup = BeautifulSoup(html_content, "html.parser")
+    audio_tag = soup.find("audio")
+    if audio_tag and audio_tag.get("src"):
+        audio_src = audio_tag["src"]
+        logger.info(f"Found audio source: {audio_src}")
+        
+        # Handle relative URLs
+        if not audio_src.startswith("http"):
+            from urllib.parse import urljoin
+            audio_src = urljoin(current_url, audio_src)
+            
+        # Download audio to /tmp
+        try:
+            import requests
+            import os
+            
+            # Create a unique filename based on the URL hash or just a timestamp
+            import hashlib
+            file_hash = hashlib.md5(audio_src.encode()).hexdigest()
+            ext = ".mp3" if ".mp3" in audio_src else ".wav" # Simple extension guess
+            audio_file_path = f"/tmp/audio_{file_hash}{ext}"
+            
+            if not os.path.exists(audio_file_path):
+                logger.info(f"Downloading audio from {audio_src} to {audio_file_path}...")
+                resp = requests.get(audio_src, timeout=30)
+                resp.raise_for_status()
+                with open(audio_file_path, "wb") as f:
+                    f.write(resp.content)
+                logger.info("Audio download successful.")
+            else:
+                logger.info("Audio file already exists in /tmp, using cached version.")
+                
+        except Exception as e:
+            logger.error(f"Failed to download audio: {e}")
+            audio_file_path = None
+    
+    system_prompt = f"""
+    You are an autonomous AI agent solving a quiz/CTF challenge.
+    
+    # OBJECTIVE
+    Navigate the website, find the answer to the question, and submit it.
+    
+    # INPUTS
+    - Current URL: {current_url}
+    - Last Observation: {last_observation}
+    - Scratchpad (Memory):
+    ```text
+    {scratchpad_content}
+    ```
+    - HTML Content: (Provided below)
+    - Visual Context: (Screenshot provided)
+    - Audio Context: {"(Audio file provided)" if audio_file_path else "(No audio detected)"}
+    
+    # CRITICAL INSTRUCTIONS
+    1. **MEMORY**: Use your Scratchpad! 
+       - If you calculate an answer, WRITE IT to the scratchpad immediately using `execute_code`.
+       - Example: `with open(r"{scratchpad_path}", "a") as f: f.write("Answer: 495759\\n")`
+       - This prevents you from forgetting the answer if you navigate to a new page.
+    2. **VISION**: You have access to a screenshot. Use it for graphs/charts.
+    3. **AUDIO**: You can HEAR! 
+       - If an audio file is provided, analyze the speech/sound to find the secret code.
+       - The answer is often spoken directly.
+    4. **NO GUESSING URLS**: Do NOT guess submission URLs.
+    5. **JSON/DATA**: Use Python to download/process JSON files.
+    6. **SUBMISSION**: 
+       - If you have the answer, use the `submit` action.
+       - Payload must include: `email`, `secret`, `url`, `answer`.
+       - `email`: "{email}", `secret`: "{secret}".
+    7. **REGEX SAFETY**: Use raw strings `r"..."`. No `["']` pattern.
+    8. **FILE SYSTEM**: 
+        - **DO NOT write to the current directory** (Permission Denied).
+        - **ALWAYS use `/tmp/`** (e.g., `/tmp/data.csv`) or Python's `tempfile` module for all file operations.
+
+    # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
+    - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
+    - **INSPECT FIRST**: Use `execute_code` to PRINT the content around the keyword.
+      ```python
+      # Example: Find where "Data Dump" is and print context
+      with open(r"{input_file_path}", "r") as f: html = f.read()
+      idx = html.find("Data Dump")
+      if idx != -1:
+          print(f"CONTEXT: {{html[idx:idx+500]}}")
+      else:
+          print("Keyword 'Data Dump' not found.")
+      ```
+    - **SELF-CORRECT**: Use the printed context to write the correct regex in the next step.
+
+    4.  **UNIVERSAL DATA INSPECTION (CRITICAL)**:
+        *   **NEVER assume data structure.** APIs change.
+        *   **ALWAYS INSPECT FIRST**:
+            *   If it's a list: Print `len(data)` and `data[0]`.
+            *   If it's a dict: Print `data.keys()`.
+            *   If it's a string: Print the first 500 chars.
+        *   **STABILITY CHECK**:
+            *   If you calculate the **SAME ANSWER TWICE** in a row -> **SUBMIT IT IMMEDIATELY**.
+            *   **DO NOT VERIFY A THIRD TIME.** Infinite verification loops are a failure.
+            *   Trust your result if it repeats.
+
+    5.  **VERIFICATION CHECKLIST**:
+        *   **Filter Data**: Did you remove nulls/None?
+        *   **Clean Strings**: Did you remove currency symbols ($), commas (,), or extra spaces?
+        *   **Type Conversion**: Did you convert strings to floats/ints before math?
+        *   **Edge Cases**: Did you handle empty lists or missing keys?
+        *   **Double Check**: If the answer seems too simple or too complex, re-read the HTML instructions.
+    
+    # TOOLS
+    1. `navigate(url)`: Go to a URL.
+    2. `execute_code(code)`: Run Python code. 
+       - HTML file: `{input_file_path}`
+       - Scratchpad file: `{scratchpad_path}` (Read/Write allowed)
+    3. `submit(submission_url, payload)`: Submit the answer.
+    
+    # OUTPUT FORMAT
+    You MUST respond in this EXACT XML-style format:
+    
+    <thought>
+    Your reasoning here. Explain what you see in the screenshot and HTML.
+    </thought>
+    <action>navigate OR execute_code OR submit</action>
+    <url>URL to navigate to (only for navigate)</url>
+    <code>
+    Python code to execute (only for execute_code)
+    </code>
+    <submission_url>URL to submit to (only for submit)</submission_url>
+    <payload>
+    JSON payload for submission (only for submit)
+    </payload>
+    """
+    
+    user_message = f"Current URL: {current_url}\nLast Observation: {last_observation}\nScratchpad:\n{scratchpad_content}\n\nHTML Snippet (first 2000 chars):\n{cleaned_html[:2000]}..."
+
+    try:
+        # Prepare the content list for Gemini (Multimodal)
+        contents = [system_prompt, user_message]
+        if screenshot_image:
+            contents.append(screenshot_image)
+        if audio_file_path:
+            contents.append(audio_file_path)
+
+        # Use the shared utility function
+        response_text = await query_llm(contents)
+        logger.info(f"Raw LLM Response: {response_text}") # Added logging
+        
+        # Parse XML-style output
         import re
         
         thought_match = re.search(r"<thought>(.*?)</thought>", response_text, re.DOTALL)
