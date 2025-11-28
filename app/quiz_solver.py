@@ -579,14 +579,15 @@ async def get_agent_decision(
        - **Hypothesis 2**: Dirty data? Print `df['col'].unique()[:10]`.
        - **Hypothesis 3**: Header issue? Try `pd.read_csv(..., header=None)`.
 
-    # GEOSPATIAL ANALYSIS CHECKLIST
-    1. **FORMULA**: For distances between cities (lat/lon), **ALWAYS use the Haversine formula**.
-       - **NEVER** use Euclidean distance (`sqrt(dx^2 + dy^2)`). It is wrong for Earth coordinates.
-    2. **EXTRACTION**:
-       - Data is often in `<pre>` tags as JSON.
-       - Use `json.loads(soup.find("pre").text)` to extract it.
-       - **NEVER** hardcode coordinates.
-    3. **PRECISION**: Use all available decimal places from the extracted data.
+    # DOMAIN AWARENESS & LOGIC
+    1. **CONTEXTUAL LOGIC**: Apply the correct scientific/mathematical model for the data type.
+       - **Lat/Lon Coordinates**: Implies **Geodesic Distance** (Haversine). Euclidean is wrong.
+       - **Cryptography**: Look for standard algorithms (AES, SHA, RSA).
+       - **Physics/Math**: Check for specific formulas or constants related to the problem.
+    2. **DATA DISCOVERY**:
+       - Scan HTML for structured data (JSON, CSV) inside `<pre>`, `<code>`, or `<script>` tags.
+       - **ALWAYS** extract this data programmatically using `json.loads()` or regex.
+       - **NEVER** manually copy-paste data (hardcoding).
 
     # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
     - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
