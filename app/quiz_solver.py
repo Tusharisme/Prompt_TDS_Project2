@@ -73,6 +73,12 @@ async def solve_quiz(task_url: str, email: str, secret: str):
         
         # Track the known submission URL to prevent "amnesia" between levels
         known_submission_url = None
+        
+        # Retry strategy: 3 approaches, each with 2 attempts (stability check)
+        attempts_on_current_level = 0  # Number of distinct approaches tried (max 3)
+        last_submitted_answer = None  # Track the last answer submitted
+        consecutive_same_answer_count = 0  # Count duplicate submissions
+        pending_soft_pass_url = None  # Store soft pass URL if offered
 
         # Limit steps to prevent infinite loops
         for step in range(25):
@@ -205,6 +211,12 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                     except Exception as e:
                                         logger.warning(f"Failed to clear scratchpad: {e}")
 
+                                    # Reset retry counters for new level
+                                    attempts_on_current_level = 0
+                                    last_submitted_answer = None
+                                    consecutive_same_answer_count = 0
+                                    pending_soft_pass_url = None
+
                                     # We have a next level, so we are NOT done. 
                                     # Reset has_submitted_successfully so the loop continues for the new level.
                                     has_submitted_successfully = False 
@@ -212,11 +224,62 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                                     last_observation = "Correct answer! No next URL provided. Maybe done?"
                                     has_submitted_successfully = True
                             else:
-                                # Handle JSON response that doesn't strictly follow expected schema
-                                last_observation = (
-                                    f"Submission successful. Server response: {result}"
-                                )
-                                has_submitted_successfully = True
+                                # Incorrect answer - implement retry strategy
+                                current_answer = payload.get("answer")
+                                next_url = result.get("url")
+                                
+                                # Store soft pass URL if provided
+                                if next_url:
+                                    pending_soft_pass_url = next_url
+                                
+                                # Check if this is the same answer as last time
+                                if current_answer == last_submitted_answer:
+                                    consecutive_same_answer_count += 1
+                                    logger.info(f"Same answer submitted {consecutive_same_answer_count} times: {current_answer}")
+                                    
+                                    # If submitted same answer 2 times, this approach is confirmed failed
+                                    if consecutive_same_answer_count >= 2:
+                                        attempts_on_current_level += 1
+                                        logger.info(f"Approach {attempts_on_current_level} failed (answer: {current_answer})")
+                                        
+                                        # Reset for next approach
+                                        last_submitted_answer = None
+                                        consecutive_same_answer_count = 0
+                                        
+                                        # Check if we've exhausted all 3 approaches
+                                        if attempts_on_current_level >= 3:
+                                            logger.info("All 3 approaches failed.")
+                                            if pending_soft_pass_url:
+                                                logger.info(f"Taking soft pass to: {pending_soft_pass_url}")
+                                                driver.get(pending_soft_pass_url)
+                                                last_observation = f"All approaches exhausted. Taking soft pass to: {pending_soft_pass_url}"
+                                                
+                                                # Clear scratchpad for the new level
+                                                try:
+                                                    with open(scratchpad_path, "w", encoding="utf-8") as f:
+                                                        f.write("")
+                                                    logger.info("Scratchpad cleared for next level.")
+                                                except Exception as e:
+                                                    logger.warning(f"Failed to clear scratchpad: {e}")
+                                                
+                                                # Reset retry counters for new level
+                                                attempts_on_current_level = 0
+                                                last_submitted_answer = None
+                                                consecutive_same_answer_count = 0
+                                                pending_soft_pass_url = None
+                                                has_submitted_successfully = False
+                                            else:
+                                                logger.info("No soft pass URL available. Stopping.")
+                                                has_submitted_successfully = True
+                                        else:
+                                            last_observation = f"Incorrect answer. Try a different approach. (Attempt {attempts_on_current_level}/3 failed)"
+                                    else:
+                                        last_observation = f"Incorrect answer: {current_answer}. Submit again to confirm approach, or try a different method."
+                                else:
+                                    # New answer - track it
+                                    last_submitted_answer = current_answer
+                                    consecutive_same_answer_count = 1
+                                    last_observation = f"Incorrect answer: {current_answer}. You can retry with the same answer to confirm this approach, or try a different method."
 
                         except ValueError:
                             # Response is not JSON, but status is 2xx (success)
