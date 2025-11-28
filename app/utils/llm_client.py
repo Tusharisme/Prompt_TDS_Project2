@@ -55,7 +55,9 @@ async def query_llm(contents: list | str, model_name: str = "gemini-2.0-flash-ex
         if settings.AIPIPE_TOKEN:
             logger.info("Attempting fallback to AI Pipe...")
             try:
-                return await _query_aipipe(contents, model_name)
+                # Use a model confirmed to work with AI Pipe
+                fallback_model = "gemini-2.5-flash-lite"
+                return await _query_aipipe(contents, fallback_model)
             except Exception as fallback_e:
                 logger.error(f"AI Pipe fallback also failed: {fallback_e}")
         else:
