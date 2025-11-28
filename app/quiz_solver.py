@@ -70,6 +70,9 @@ async def solve_quiz(task_url: str, email: str, secret: str):
 
         # Track if we've already successfully submitted an answer
         has_submitted_successfully = False
+        
+        # Track the known submission URL to prevent "amnesia" between levels
+        known_submission_url = None
 
         # Limit steps to prevent infinite loops
         for step in range(25):
@@ -117,18 +120,6 @@ async def solve_quiz(task_url: str, email: str, secret: str):
             decision = await get_agent_decision(
                 html_content,
                 driver.current_url,
-                last_observation,
-                email,
-                secret,
-                input_file_path,
-                scratchpad_content, # Pass scratchpad content
-                scratchpad_path,    # Pass scratchpad path so agent can write to it
-                screenshot_image,
-            )
-            logger.info(f"Agent Decision: {decision}")
-
-            if not decision:
-                logger.error("Agent returned no decision.")
                 break
 
             action = decision.get("action")
@@ -183,6 +174,10 @@ async def solve_quiz(task_url: str, email: str, secret: str):
                             if isinstance(result, dict) and result.get(
                                 "correct", False
                             ):
+                                # Success! Remember this URL for future levels
+                                known_submission_url = submission_url
+                                logger.info(f"Learned submission URL: {known_submission_url}")
+
                                 next_url = result.get("url")
                                 if next_url:
                                     driver.get(next_url)
@@ -325,6 +320,7 @@ async def get_agent_decision(
     scratchpad_content: str, # New arg
     scratchpad_path: str,    # New arg
     screenshot_image=None,
+    known_submission_url: str = None, # New arg
 ) -> dict:
     """
     Asks the LLM for the next step based on the current state and visual context.
@@ -389,6 +385,7 @@ async def get_agent_decision(
     - HTML Content: (Provided below)
     - Visual Context: (Screenshot provided)
     - Audio Context: {"(Audio file provided)" if audio_file_path else "(No audio detected)"}
+    - Known Submission URL: {known_submission_url if known_submission_url else "(Not yet discovered)"}
     
     # CRITICAL INSTRUCTIONS
     1. **MEMORY**: Use your Scratchpad! 
