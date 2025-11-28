@@ -598,6 +598,19 @@ async def get_agent_decision(
     - Hardcoding guarantees wrong answers
     - **ALWAYS extract, ALWAYS verify by printing**
 
+    # DATA ANALYSIS CHECKLIST (FOR CSV/JSON)
+    1. **INSPECT BEFORE CALCULATING**: 
+       - ALWAYS print `df.head()` and `df.columns` immediately after loading.
+       - Check: Does it have a header? Are values numeric? Is there garbage text?
+    2. **VERIFY FILTERS**:
+       - Print row counts before and after filtering: `print(f"Rows: {len(df)} -> {len(filtered_df)}")`
+       - If filtered count is 0, your logic is wrong.
+    3. **DEBUGGING WRONG ANSWERS**:
+       - If the server rejects your answer, DO NOT run the same code again.
+       - **Hypothesis 1**: Wrong column? Print `df.columns`.
+       - **Hypothesis 2**: Dirty data? Print `df['col'].unique()[:10]`.
+       - **Hypothesis 3**: Header issue? Try `pd.read_csv(..., header=None)`.
+
     # SMART DEBUGGING STRATEGY (WHEN EXTRACTION FAILS)
     - **STOP GUESSING**: If your regex fails, DO NOT guess a new one immediately.
     - **INSPECT FIRST**: Use `execute_code` to PRINT the content around the keyword.
