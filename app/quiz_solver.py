@@ -540,6 +540,9 @@ async def get_agent_decision(
     - Known Submission URL: {known_submission_url if known_submission_url else "(Not yet discovered)"} (Use this ONLY if the current page does not provide a specific submission URL)
     
     # CRITICAL INSTRUCTIONS
+    0. **ACTION PRIORITY (PREVENT LOOPS)**:
+       - **IF ANSWER IN SCRATCHPAD -> SUBMIT**: If you have calculated the answer and wrote it to the scratchpad, your **ONLY** allowed action is `submit`.
+       - **DO NOT VERIFY AGAIN**: Do not run code to "double check" if you already have the answer. Infinite verification loops are a failure.
     1. **MEMORY**: Use your Scratchpad! 
        - If you calculate an answer, WRITE IT to the scratchpad immediately using `execute_code`.
        - Example: `with open(r"{scratchpad_path}", "a") as f: f.write("Answer: 495759\\n")`
