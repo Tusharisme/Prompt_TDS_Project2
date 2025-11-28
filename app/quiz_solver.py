@@ -554,34 +554,6 @@ async def get_agent_decision(
        - If you have the answer, use the `submit` action.
        - Payload must include: `email`, `secret`, `url`, `answer`.
        - `email`: "{email}", `secret`: "{secret}".
-    7. **REGEX SAFETY**: Use raw strings `r"..."`. No `["']` pattern.
-    8. **FILE SYSTEM**: 
-        - **DO NOT write to the current directory** (Permission Denied).
-        - **ALWAYS use `/tmp/`** (e.g., `/tmp/data.csv`) or Python's `tempfile` module for all file operations.
-    9. **LEVEL AWARENESS**:
-       - Focus ONLY on the current URL's task.
-       - If you are on `/demo2-checksum`, do NOT try to solve `/demo2` again.
-       - Do NOT regress to previous levels.
-    10. **HTML vs DATA**:
-       - `requests.get(url).text` returns HTML source code, NOT just the visible text/key.
-       - **NEVER** do `key = requests.get(previous_url).text`. This gets the whole HTML page!
-       - If you need a previous answer, **READ IT FROM THE SCRATCHPAD**.
-
-    # ⚠️ NO HARDCODING - CRITICAL RULE ⚠️
-    **NEVER HARDCODE DATA FROM THE PAGE!**
-    - **WRONG**: Typing coordinates, lists, or dictionaries manually in your code
-    - **RIGHT**: Extracting data from HTML using BeautifulSoup and parsing it
-    
-    **Example - WRONG (DO NOT DO THIS):**
-    ```python
-    # ❌ BAD: Hardcoded data from the page
-    city_data = {{
-      "New York": [40.7128, -74.0060],
-      "Tokyo": [35.6762, 139.6503]
-    }}
-    ```
-    
-    **Example - CORRECT:**
     ```python
     # ✅ GOOD: Extract from HTML
     from bs4 import BeautifulSoup
@@ -603,18 +575,6 @@ async def get_agent_decision(
     **WHY THIS MATTERS:**
     - The actual data on the server may differ slightly from what you see
     - Even tiny differences (0.0001) can change calculation results
-    - Hardcoding guarantees wrong answers
-    - **ALWAYS extract, ALWAYS verify by printing**
-
-    # DATA ANALYSIS CHECKLIST (FOR CSV/JSON)
-    1. **INSPECT BEFORE CALCULATING**: 
-       - ALWAYS print `df.head()` and `df.columns` immediately after loading.
-       - Check: Does it have a header? Are values numeric? Is there garbage text?
-    2. **VERIFY FILTERS**:
-       - Print row counts before and after filtering: `print(f"Rows: {{len(df)}} -> {{len(filtered_df)}}")`
-       - If filtered count is 0, your logic is wrong.
-    3. **DEBUGGING WRONG ANSWERS**:
-       - If the server rejects your answer, DO NOT run the same code again.
        - **Hypothesis 1**: Wrong column? Print `df.columns`.
        - **Hypothesis 2**: Dirty data? Print `df['col'].unique()[:10]`.
        - **Hypothesis 3**: Header issue? Try `pd.read_csv(..., header=None)`.
