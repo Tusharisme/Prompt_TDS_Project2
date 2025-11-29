@@ -20,6 +20,3 @@ Thumbs.db
 verify_app.py
 verify_extract.py
 
-# PDF files
-*.pdf
-

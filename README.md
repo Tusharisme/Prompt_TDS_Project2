@@ -44,26 +44,12 @@ An automated quiz solver built with FastAPI and Google Gemini that can fetch, pa
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/Tusharisme/Prompt_TDS_Project2.git
+git clone https://github.com/<YOUR_GITHUB_USERNAME>/Prompt_TDS_Project2.git
 cd Prompt_TDS_Project2
 ```
 
 ### 2. Install dependencies
 ```bash
-pip install -r requirements.txt
-```
-
-### 3. Configure environment variables
-Create a `.env` file with:
-```env
-STUDENT_EMAIL=your_email@example.com
-STUDENT_SECRET=your_secret
-GEMINI_API_KEY=your_gemini_api_key
-CORS_ORIGINS=*
-APP_ENV=production
-```
-
-### 4. Run locally
 ```bash
 uvicorn app.main:app --reload
 ```
@@ -109,7 +95,7 @@ API will be available at `http://localhost:8000`
    - `APP_ENV`
 3. Space will auto-build and deploy
 
-Live API: `https://tusharisme-tds-project2.hf.space/quiz`
+Live API: `https://<YOUR_SPACE_NAME>.hf.space/quiz`
 
 ## How It Works
 
@@ -144,4 +130,4 @@ MIT License
 
 ## Author
 
-Tushar - IIT Madras (23f2003751@ds.study.iitm.ac.in)
+(Your Name) - (Your Institution) (<your_email@example.com>)
